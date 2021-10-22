@@ -1,0 +1,162 @@
+use log::LevelFilter;
+use log::{debug, info, warn};
+use std::path::PathBuf;
+
+use std::net::SocketAddr;
+use structopt::StructOpt;
+use tokio::io;
+use reqwest;
+use warp::{Filter, http::Response, http::StatusCode};
+use std::fs;
+use dashmap::DashSet;
+use std::sync::Arc;
+use std::convert::Infallible;
+
+mod handler;
+mod error;
+mod data;
+
+#[cfg(all(unix, feature = "drop_privs"))]
+use privdrop::PrivDrop;
+
+#[derive(Debug, StructOpt)]
+#[structopt(name = "bimi-agent", about = "BIMI agent to assist images verification end extraction")]
+struct Config {
+    /// Listen address to bind to
+    #[structopt(short = "l", long = "listen", default_value = "0.0.0.0:3030")]
+    listen_addr: SocketAddr,
+    /// Verbose level (repeat for more verbosity)
+    #[structopt(short = "v", long = "verbose", parse(from_occurrences))]
+    verbose: u8,
+    #[cfg(all(unix, feature = "drop_privs"))]
+    #[structopt(flatten)]
+    #[cfg(all(unix, feature = "drop_privs"))]
+    privdrop: PrivDropConfig,
+    #[structopt(parse(from_os_str))]
+    /// Private key for SSL HTTP server
+    privkey: Option<PathBuf>,
+    /// X509 certificate for HTTP server
+    #[structopt(parse(from_os_str))]
+    cert: Option<PathBuf>,
+    /// Number of threads to start
+    #[structopt(short = "t", long = "max-threads", default_value = "2")]
+    max_threads: usize,
+}
+
+#[cfg(all(unix, feature = "drop_privs"))]
+#[derive(Debug, StructOpt)]
+struct PrivDropConfig {
+    /// Run as this user and their primary group
+    #[structopt(short = "u", long = "user")]
+    user: Option<String>,
+    /// Run as this group
+    #[structopt(short = "g", long = "group")]
+    group: Option<String>,
+    /// Chroot to this directory
+    #[structopt(long = "chroot")]
+    chroot: Option<String>,
+}
+
+fn drop_privs(privdrop: &PrivDropConfig) {
+    #[cfg(all(unix, feature = "drop_privs"))]
+    let privdrop_enabled = [
+            &privdrop.chroot,
+            &privdrop.user,
+            &privdrop.group]
+            .iter()
+            .any(|o| o.is_some());
+    if privdrop_enabled {
+        let mut pd = PrivDrop::default();
+        if let Some(path) = &privdrop.chroot {
+            info!("chroot: {}", path);
+            pd = pd.chroot(path);
+        }
+
+        if let Some(user) = &privdrop.user {
+            info!("setuid user: {}", user);
+            pd = pd.user(user);
+        }
+
+        if let Some(group) = &privdrop.group {
+            info!("setgid group: {}", group);
+            pd = pd.group(group);
+        }
+
+        pd.apply()
+            .unwrap_or_else(|e| panic!("Failed to drop privileges: {}", e));
+
+        info!("dropped privs");
+    }
+}
+
+type SharedSet = Arc<DashSet<String>>;
+
+fn with_dash_set(set: SharedSet) -> impl Filter<Extract = (SharedSet,), Error = Infallible> + Clone {
+    warp::any().map(move || set.clone())
+}
+
+fn with_http_client(client: reqwest::Client) -> impl Filter<Extract = (reqwest::Client,), Error = Infallible> + Clone {
+    warp::any().map(move || client.clone())
+}
+
+fn main() {
+    let opts = Config::from_args();
+    let has_sane_tls = opts.privkey.is_some() && opts.cert.is_some();
+    let log_level = match opts.verbose {
+        0 => LevelFilter::Off,
+        1 => LevelFilter::Info,
+        2 => LevelFilter::Debug,
+        _ => LevelFilter::Trace,
+    };
+    let http_client = reqwest::Client::new();
+
+    env_logger::Builder::from_default_env()
+        .filter(None, log_level)
+        .format_timestamp(Some(env_logger::fmt::TimestampPrecision::Millis))
+        .init();
+    let domains_inflight : SharedSet =
+        Arc::new(DashSet::with_capacity(128));
+
+    tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(opts.max_threads)
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(async move {
+            let health_route = warp::path!("health")
+                .and(with_dash_set(domains_inflight.clone()))
+                .and_then(handler::health_handler);
+            let check_route = warp::path!("check")
+                .and(warp::post())
+                .and(warp::body::json())
+                .and(with_dash_set(domains_inflight.clone()))
+                .and(with_http_client(http_client.clone()))
+                .and_then(handler::check_handler);
+            let routes = health_route
+                .or(check_route)
+                .with(warp::cors().allow_any_origin())
+                .recover(error::handle_rejection);
+
+            let server = warp::serve(routes);
+
+            if has_sane_tls {
+                let privkey = fs::read(opts.privkey.unwrap())
+                    .expect("cannot read privkey file");
+                let cert = fs::read(opts.cert.unwrap())
+                    .expect("cannot read privkey file");
+                // Drop privs after keys are read
+                drop_privs(&opts.privdrop);
+
+                server.tls()
+                    .cert(cert)
+                    .key(privkey)
+                    .run(opts.listen_addr)
+                    .await;
+            } else {
+                drop_privs(&opts.privdrop);
+                server.run(opts.listen_addr)
+                    .await;
+            }
+        });
+}
+
