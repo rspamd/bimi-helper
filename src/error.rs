@@ -1,5 +1,5 @@
 use thiserror::Error;
-use warp::{http::StatusCode, reject, Reply, Rejection};
+use warp::{http::StatusCode, Reply, Rejection};
 use std::convert::Infallible;
 use url;
 use serde_derive::{Serialize};
@@ -13,6 +13,16 @@ pub enum Error {
     AlreadyProcessing,
     #[error("invalid url")]
     BadURL(#[from] url::ParseError),
+    #[error("bad pem certificate")]
+    BadPEM,
+    #[error("x509 parse error: {0}")]
+    CertificateParseError(String),
+    #[error("CA init error: {0}")]
+    CAInitError(String),
+    #[error("Invalid time: {0}")]
+    TimeParseError(#[from] chrono::ParseError),
+    #[error("Certificate verification error: {0}")]
+    CertificateVerificationError(String),
 }
 
 impl warp::reject::Reject for Error {}
@@ -22,7 +32,7 @@ struct ErrorResponse {
     pub message: String,
 }
 
-type Result<T> = std::result::Result<T, warp::Rejection>;
+
 pub async fn handle_rejection(err: Rejection) -> std::result::Result<impl Reply, Infallible> {
     let code;
     let message;

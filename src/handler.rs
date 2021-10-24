@@ -31,7 +31,7 @@ pub async fn check_handler(body: RequestCert, inflight: Arc<DashSet<String>>,
                     let req = client.get(url).send();
                     let resp = match req.await {
                         Ok(o) => {
-                            o.text()
+                            o.bytes()
                         }
                         Err(e) => {
                             info!("cannot get send request to {}: {}", &body.url, e);
@@ -41,7 +41,7 @@ pub async fn check_handler(body: RequestCert, inflight: Arc<DashSet<String>>,
                     };
                     match resp.await {
                         Ok(o) => {
-                            info!("got result from {}: {}", &body.url, o);
+                            info!("got result from {}: lenght = {}", &body.url, o.len());
                             inflight.remove(&body.url);
                             Ok(())
                         }

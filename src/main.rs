@@ -1,3 +1,6 @@
+#[macro_use]
+extern crate lazy_static;
+
 use log::LevelFilter;
 use log::{debug, info, warn};
 use std::path::PathBuf;
@@ -11,10 +14,12 @@ use std::fs;
 use dashmap::DashSet;
 use std::sync::Arc;
 use std::convert::Infallible;
+use std::time::Duration;
 
 mod handler;
 mod error;
 mod data;
+mod cert;
 
 #[cfg(all(unix, feature = "drop_privs"))]
 use privdrop::PrivDrop;
@@ -39,8 +44,14 @@ struct Config {
     #[structopt(parse(from_os_str))]
     cert: Option<PathBuf>,
     /// Number of threads to start
-    #[structopt(short = "t", long = "max-threads", default_value = "2")]
+    #[structopt(short = "n", long = "max-threads", default_value = "2")]
     max_threads: usize,
+    /// HTTP client timeout
+    #[structopt(short = "t", long = "timeout", default_value = "5.0")]
+    http_timeout: f32,
+    /// HTTP user agent
+    #[structopt(short = "u", long = "user-agent", default_value = "BIMI-Agent/0.1")]
+    http_ua: String,
 }
 
 #[cfg(all(unix, feature = "drop_privs"))]
@@ -108,7 +119,11 @@ fn main() {
         2 => LevelFilter::Debug,
         _ => LevelFilter::Trace,
     };
-    let http_client = reqwest::Client::new();
+    let http_client = reqwest::Client::builder()
+        .timeout(Duration::from_secs_f32(opts.http_timeout))
+        .user_agent(&opts.http_ua)
+        .build()
+        .expect("cannot build HTTP client");
 
     env_logger::Builder::from_default_env()
         .filter(None, log_level)
