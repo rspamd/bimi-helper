@@ -7,9 +7,8 @@ use std::path::PathBuf;
 
 use std::net::SocketAddr;
 use structopt::StructOpt;
-use tokio::io;
 use reqwest;
-use warp::{Filter, http::Response, http::StatusCode};
+use warp::{Filter};
 use std::fs;
 use dashmap::DashSet;
 use std::sync::Arc;
@@ -110,6 +109,10 @@ fn with_http_client(client: reqwest::Client) -> impl Filter<Extract = (reqwest::
     warp::any().map(move || client.clone())
 }
 
+fn with_cert_storage(storage: Arc<cert::CAStorage>) -> impl Filter<Extract = (Arc<cert::CAStorage>,), Error = Infallible> + Clone {
+    warp::any().map(move || storage.clone())
+}
+
 fn main() {
     let opts = Config::from_args();
     let has_sane_tls = opts.privkey.is_some() && opts.cert.is_some();
@@ -131,6 +134,7 @@ fn main() {
         .init();
     let domains_inflight : SharedSet =
         Arc::new(DashSet::with_capacity(128));
+    let ca_storage = Arc::new(cert::CAStorage::new().unwrap());
 
     tokio::runtime::Builder::new_multi_thread()
         .worker_threads(opts.max_threads)
@@ -146,6 +150,7 @@ fn main() {
                 .and(warp::body::json())
                 .and(with_dash_set(domains_inflight.clone()))
                 .and(with_http_client(http_client.clone()))
+                .and(with_cert_storage(ca_storage.clone()))
                 .and_then(handler::check_handler);
             let routes = health_route
                 .or(check_route)

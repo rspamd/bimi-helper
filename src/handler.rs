@@ -2,10 +2,10 @@ use warp::{http::StatusCode, Reply, Rejection};
 use dashmap::DashSet;
 use reqwest;
 use std::sync::Arc;
-use futures::TryFutureExt;
 
-use crate::error::{handle_rejection, Error};
+use crate::error::{Error};
 use crate::data::*;
+use crate::cert;
 use log::{debug, info};
 
 pub async fn health_handler(inflight: Arc<DashSet<String>>) -> std::result::Result<impl Reply, Rejection> {
@@ -15,7 +15,8 @@ pub async fn health_handler(inflight: Arc<DashSet<String>>) -> std::result::Resu
 }
 
 pub async fn check_handler(body: RequestCert, inflight: Arc<DashSet<String>>,
-                           client: reqwest::Client) -> std::result::Result<impl Reply, Rejection>
+                           client: reqwest::Client,
+                           ca_storage: Arc<cert::CAStorage>) -> std::result::Result<impl Reply, Rejection>
 {
     match reqwest::Url::parse(body.url.as_str()) {
         Ok(url) => {
@@ -28,6 +29,7 @@ pub async fn check_handler(body: RequestCert, inflight: Arc<DashSet<String>>,
                     &body.url, inflight.len());
                 tokio::spawn(async move {
                     inflight.insert(body.url.clone());
+                    let domain = url.domain().unwrap().to_owned();
                     let req = client.get(url).send();
                     let resp = match req.await {
                         Ok(o) => {
@@ -42,6 +44,8 @@ pub async fn check_handler(body: RequestCert, inflight: Arc<DashSet<String>>,
                     match resp.await {
                         Ok(o) => {
                             info!("got result from {}: lenght = {}", &body.url, o.len());
+                            cert::process_cert(&o, ca_storage.as_ref(),
+                                               &domain);
                             inflight.remove(&body.url);
                             Ok(())
                         }

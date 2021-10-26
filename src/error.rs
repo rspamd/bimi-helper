@@ -21,8 +21,14 @@ pub enum Error {
     CAInitError(String),
     #[error("Invalid time: {0}")]
     TimeParseError(#[from] chrono::ParseError),
-    #[error("Certificate verification error: {0}")]
+    #[error("Certificate CA verification error: {0}")]
     CertificateVerificationError(String),
+    #[error("Certificate CA verification generic error")]
+    CertificateGenericVerificationError,
+    #[error("Certificate name verification error: {0}")]
+    CertificateNameVerificationError(String),
+    #[error("Certificate name verification generic error")]
+    CertificateGenericNameVerificationError,
 }
 
 impl warp::reject::Reject for Error {}
