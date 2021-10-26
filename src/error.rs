@@ -29,6 +29,8 @@ pub enum Error {
     CertificateNameVerificationError(String),
     #[error("Certificate name verification generic error")]
     CertificateGenericNameVerificationError,
+    #[error("Certificate is expired")]
+    CertificateExpired,
 }
 
 impl warp::reject::Reject for Error {}

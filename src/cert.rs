@@ -1,11 +1,14 @@
 use bytes::Bytes;
 use memmem::{Searcher, TwoWaySearcher};
-use openssl::x509::{GeneralName, X509, X509NameRef, X509StoreContext, X509StoreContextRef};
+use openssl::x509::{GeneralName, X509, X509NameRef,
+                    X509StoreContext, X509StoreContextRef,
+                    X509Extension};
 use openssl::stack::{Stack};
 use openssl::x509::store::{X509StoreBuilder, X509Store};
 use openssl::asn1::Asn1TimeRef;
 use openssl::nid;
 use chrono::{NaiveDateTime, DateTime, Utc};
+use std::time::SystemTime;
 use std::net::{IpAddr};
 
 use crate::error::{Error};
@@ -17,14 +20,14 @@ fn parse_openssl_time(time: &Asn1TimeRef) -> Result<DateTime<Utc>, Error> {
 }
 
 /// Chain of certificates to be validated
-pub struct ServerCertificate {
+pub struct BIMICertificate {
     certificate: X509,
     chain: Stack<X509>,
     not_before: DateTime<Utc>,
     not_after: DateTime<Utc>,
 }
 
-impl ServerCertificate {
+impl BIMICertificate {
     /// Create a certificate from PEM file (typical usage for BIMI)
     pub fn from_pem(input : &Vec<u8>) -> Result<Self, Error> {
         let mut x509_stack = X509::stack_from_pem(&input)
@@ -71,6 +74,13 @@ impl ServerCertificate {
             Some(names) => self.verify_subject_alt_names(domain, &names),
             None => self.verify_subject_name(domain, &self.certificate.subject_name()),
         }
+    }
+
+    pub fn verify_expiry(&self) -> bool {
+        let now = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .expect("cannot run if clock are before unix epoch").as_secs() as i64;
+        return self.not_after.timestamp() > now && self.not_before.timestamp() <= now;
     }
 
     fn verify_subject_alt_names(&self, domain: &str, names: &Stack<GeneralName>)
@@ -211,11 +221,14 @@ pub fn process_cert(input: &Bytes, ca_storage: &CAStorage, domain: &str)
         return Err(Error::BadPEM);
     }
 
-    let cert = ServerCertificate::from_pem(&input.to_vec())?;
+    let cert = BIMICertificate::from_pem(&input.to_vec())?;
 
-    // Verify name first as this check is cheap
+    // Do cheap checks: name, time, extended key usage
     if !cert.verify_name(domain)? {
         return Err(Error::CertificateGenericNameVerificationError);
+    }
+    if !cert.verify_expiry() {
+        return Err(Error::CertificateExpired);
     }
     // Verify that a cert is signed properly (expensive check)
     if !cert.verify_ca(ca_storage)? {
