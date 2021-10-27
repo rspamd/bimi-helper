@@ -1,5 +1,8 @@
 #[macro_use]
 extern crate lazy_static;
+extern crate openssl_sys as openssl_ffi;
+#[macro_use]
+extern crate foreign_types;
 
 use log::LevelFilter;
 use log::{debug, info, warn};
@@ -49,7 +52,7 @@ struct Config {
     #[structopt(short = "t", long = "timeout", default_value = "5.0")]
     http_timeout: f32,
     /// HTTP user agent
-    #[structopt(short = "u", long = "user-agent", default_value = "BIMI-Agent/0.1")]
+    #[structopt(short = "U", long = "user-agent", default_value = "BIMI-Agent/0.1")]
     http_ua: String,
 }
 

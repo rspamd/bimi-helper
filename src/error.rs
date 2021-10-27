@@ -31,6 +31,8 @@ pub enum Error {
     CertificateGenericNameVerificationError,
     #[error("Certificate is expired")]
     CertificateExpired,
+    #[error("Certificate has no valid key usage for BIMI")]
+    CertificateNoKeyUsage,
 }
 
 impl warp::reject::Reject for Error {}

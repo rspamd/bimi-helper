@@ -29,7 +29,7 @@ pub async fn check_handler(body: RequestCert, inflight: Arc<DashSet<String>>,
                     &body.url, inflight.len());
                 tokio::spawn(async move {
                     inflight.insert(body.url.clone());
-                    let domain = url.domain().unwrap().to_owned();
+                    let domain = body.domain;
                     let req = client.get(url).send();
                     let resp = match req.await {
                         Ok(o) => {
@@ -43,9 +43,16 @@ pub async fn check_handler(body: RequestCert, inflight: Arc<DashSet<String>>,
                     };
                     match resp.await {
                         Ok(o) => {
-                            info!("got result from {}: lenght = {}", &body.url, o.len());
-                            cert::process_cert(&o, ca_storage.as_ref(),
-                                               &domain);
+                            info!("got result from {}: length = {}", &body.url, o.len());
+                            match cert::process_cert(&o, ca_storage.as_ref(),
+                                               &domain) {
+                                Err(e) => {
+                                    info!("cannot process cert for {}: {:?}", domain, e);
+                                }
+                                Ok(_) => {
+                                    info!("processed certificate for {}", domain);
+                                }
+                            }
                             inflight.remove(&body.url);
                             Ok(())
                         }
