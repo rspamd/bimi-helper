@@ -192,7 +192,7 @@ const BIMI_KEY_USAGE_OID : &'static str = "1.3.6.1.5.5.7.3.31";
 
 impl BIMICertificate {
     /// Create a certificate from PEM file (typical usage for BIMI)
-    pub fn from_pem(input : &Vec<u8>) -> Result<Self, Error> {
+    pub fn from_pem(input : &Vec<u8>, ca_storage: &CAStorage) -> Result<Self, Error> {
         let mut x509_stack = X509::stack_from_pem(&input)
             .map_err(|e| Error::CertificateParseError(e.to_string()))?;
 
@@ -222,6 +222,11 @@ impl BIMICertificate {
         while let Some(cert) = x509_stack.pop() {
             if !x509_is_ca(&cert) {
                 chain_stack.push(cert).unwrap();
+            }
+            else {
+                // Either add trusted CA or add some intermediate CA to the chain
+                ca_storage.try_add_ca_cert(&cert)
+                    .unwrap_or_else(|_| chain_stack.push(cert).unwrap())
             }
         }
 
@@ -383,7 +388,8 @@ pub fn process_cert(input: &Bytes, ca_storage: &CAStorage, domain: &str)
 
     debug!("got likely valid pem for domain {}", domain);
 
-    let cert = BIMICertificate::from_pem(&input.to_vec())?;
+    let cert = BIMICertificate::from_pem(&input.to_vec(),
+            ca_storage)?;
     debug!("got valid pem for domain {}", domain);
 
     // Do cheap checks: name, time, extended key usage
@@ -401,6 +407,9 @@ pub fn process_cert(input: &Bytes, ca_storage: &CAStorage, domain: &str)
         return Err(Error::CertificateNoKeyUsage);
     }
     debug!("verified key usage for domain {}", domain);
+
+    ca_storage.verify_cert(&cert.certificate, &cert.chain)?;
+    debug!("verified PKI for domain {}", domain);
 
     return x509_bimi_get_ext(&cert.certificate)
         .ok_or(Error::CertificateNoLogoTypeExt);

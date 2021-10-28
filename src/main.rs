@@ -55,6 +55,9 @@ struct Config {
     /// HTTP user agent
     #[structopt(short = "U", long = "user-agent", default_value = "BIMI-Agent/0.1")]
     http_ua: String,
+    /// Trusted fingerprint
+    #[structopt(short = "F", long = "fingerprint")]
+    fingerprints: Option<Vec<String>>,
 }
 
 #[cfg(all(unix, feature = "drop_privs"))]
@@ -139,6 +142,9 @@ fn main() {
     let domains_inflight : SharedSet =
         Arc::new(DashSet::with_capacity(128));
     let ca_storage = Arc::new(mini_pki::CAStorage::new().unwrap());
+    opts.fingerprints.as_ref().map(|fp_vec|
+        fp_vec.iter()
+            .for_each(|fp| ca_storage.as_ref().add_fingerprint(fp.as_str())));
 
     tokio::runtime::Builder::new_multi_thread()
         .worker_threads(opts.max_threads)
