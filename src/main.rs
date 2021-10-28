@@ -22,6 +22,7 @@ mod handler;
 mod error;
 mod data;
 mod cert;
+mod mini_pki;
 
 #[cfg(all(unix, feature = "drop_privs"))]
 use privdrop::PrivDrop;
@@ -112,7 +113,7 @@ fn with_http_client(client: reqwest::Client) -> impl Filter<Extract = (reqwest::
     warp::any().map(move || client.clone())
 }
 
-fn with_cert_storage(storage: Arc<cert::CAStorage>) -> impl Filter<Extract = (Arc<cert::CAStorage>,), Error = Infallible> + Clone {
+fn with_cert_storage(storage: Arc<mini_pki::CAStorage>) -> impl Filter<Extract = (Arc<mini_pki::CAStorage>,), Error = Infallible> + Clone {
     warp::any().map(move || storage.clone())
 }
 
@@ -137,7 +138,7 @@ fn main() {
         .init();
     let domains_inflight : SharedSet =
         Arc::new(DashSet::with_capacity(128));
-    let ca_storage = Arc::new(cert::CAStorage::new().unwrap());
+    let ca_storage = Arc::new(mini_pki::CAStorage::new().unwrap());
 
     tokio::runtime::Builder::new_multi_thread()
         .worker_threads(opts.max_threads)

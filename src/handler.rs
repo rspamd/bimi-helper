@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use crate::error::{Error};
 use crate::data::*;
-use crate::cert;
+use crate::{cert, mini_pki};
 use log::{debug, info};
 
 pub async fn health_handler(inflight: Arc<DashSet<String>>) -> std::result::Result<impl Reply, Rejection> {
@@ -16,7 +16,7 @@ pub async fn health_handler(inflight: Arc<DashSet<String>>) -> std::result::Resu
 
 pub async fn check_handler(body: RequestCert, inflight: Arc<DashSet<String>>,
                            client: reqwest::Client,
-                           ca_storage: Arc<cert::CAStorage>) -> std::result::Result<impl Reply, Rejection>
+                           ca_storage: Arc<mini_pki::CAStorage>) -> std::result::Result<impl Reply, Rejection>
 {
     match reqwest::Url::parse(body.url.as_str()) {
         Ok(url) => {

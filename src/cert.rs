@@ -1,9 +1,7 @@
 use bytes::Bytes;
 use memmem::{Searcher, TwoWaySearcher};
-use openssl::x509::{GeneralName, X509, X509NameRef,
-                    X509StoreContext, X509StoreContextRef};
+use openssl::x509::{GeneralName, X509, X509NameRef};
 use openssl::stack::{Stack, Stackable};
-use openssl::x509::store::{X509StoreBuilder, X509Store};
 use openssl::asn1::{Asn1TimeRef, Asn1Object};
 use openssl::nid::Nid;
 use chrono::{NaiveDateTime, DateTime, Utc};
@@ -17,8 +15,10 @@ use std::fmt;
 use std::ptr;
 use std::ffi::CString;
 use libc::{c_int};
+use std::slice;
 
 use crate::error::{Error};
+use crate::mini_pki::CAStorage;
 
 fn parse_openssl_time(time: &Asn1TimeRef) -> Result<DateTime<Utc>, Error> {
     let time = time.to_string();
@@ -108,6 +108,77 @@ fn x509_is_ca(cert: &X509) -> bool {
 }
 
 
+lazy_static! {
+    static ref SVG_SEARCHER : TwoWaySearcher<'static> =
+        TwoWaySearcher::new(b"data:image/svg+xml");
+}
+
+const BIMI_IMAGE_OID : &'static str = "1.3.6.1.5.5.7.1.12";
+
+fn x509_bimi_get_ext(cert: &X509) -> Option<Vec<u8>>
+{
+    unsafe {
+        let c_str_oid = CString::new(BIMI_IMAGE_OID)
+            .expect("must be able to construct C string");
+        let obj_id = openssl_ffi::OBJ_txt2obj(c_str_oid.as_ptr(), 1);
+
+        if obj_id.is_null() {
+            return None;
+        }
+
+        let c_cert_ptr = cert.as_ref() as *const _ as *mut _;
+        let ext_idx = openssl_ffi::X509_get_ext_by_OBJ(c_cert_ptr, obj_id, 0);
+
+        if ext_idx < 0 {
+            return None;
+        }
+
+        let ext = openssl_ffi::X509_get_ext(c_cert_ptr, ext_idx);
+        if ext.is_null() {
+            return None;
+        }
+
+        let obj_data = openssl_ffi::X509_EXTENSION_get_data(ext);
+        if obj_data.is_null() {
+            return None;
+        }
+
+        // TODO: In general, we need to parse ASN.1 octets and they have the
+        // following structure:
+        //    0:d=0  hl=4 l= 886 cons: SEQUENCE
+        //     4:d=1  hl=4 l= 882 cons: cont [ 2 ]
+        //     8:d=2  hl=4 l= 878 cons: cont [ 0 ]
+        //    12:d=3  hl=4 l= 874 cons: SEQUENCE
+        //    16:d=4  hl=4 l= 870 cons: SEQUENCE
+        //    20:d=5  hl=4 l= 866 cons: SEQUENCE
+        //    24:d=6  hl=2 l=  13 prim: IA5STRING         :image/svg+xml
+        //    39:d=6  hl=2 l=  35 cons: SEQUENCE
+        //    41:d=7  hl=2 l=  33 cons: SEQUENCE
+        //    43:d=8  hl=2 l=   9 cons: SEQUENCE
+        //    45:d=9  hl=2 l=   5 prim: OBJECT            :sha1
+        //    52:d=9  hl=2 l=   0 prim: NULL
+        //    54:d=8  hl=2 l=  20 prim: OCTET STRING      <sha1>
+        //    76:d=6  hl=4 l= 810 cons: SEQUENCE
+        //    80:d=7  hl=4 l= 806 prim: IA5STRING         <real image>
+        // But we can observe that real image is always last and it always
+        // starts with data:image/svg+xml
+        // Hence, for now, we use this hack to get the data without real
+        // ASN.1 parsing of the unknown extension
+        // Presumably, this should be implemented as C extension
+        let ptr = openssl_ffi::ASN1_STRING_get0_data(obj_data as *mut _);
+
+        if ptr.is_null() {
+            return None;
+        }
+
+        let len = openssl_ffi::ASN1_STRING_length(obj_data as *mut _);
+        let slice = slice::from_raw_parts(ptr as *const u8, len as usize);
+        let svg_pos = SVG_SEARCHER.search_in(slice)?;
+
+        slice.get(svg_pos..slice.len()).map(|sl| sl.to_vec())
+    }
+}
+
 /// Chain of certificates to be validated
 pub struct BIMICertificate {
     certificate: X509,
@@ -163,22 +234,6 @@ impl BIMICertificate {
         };
 
         Ok(identity)
-    }
-
-    /// Verify certificate against CA, no other checks are done
-    pub fn verify_ca(&self, ca_store: &CAStorage) -> Result<bool, Error> {
-        let mut nstore_ctx = X509StoreContext::new().
-            map_err(|e| Error::CAInitError(e.to_string()))?;
-        nstore_ctx.init(ca_store.store.as_ref(), self.certificate.as_ref(),
-            self.chain.as_ref(), |ctx| {
-                debug!("calling verify cert method");
-                let res = X509StoreContextRef::verify_cert(ctx)?;
-                if !res {
-                    debug!("verification error: {}", ctx.error().error_string());
-                }
-
-                Ok(res)
-            }).map_err(|e| Error::CertificateVerificationError(e.to_string()))
     }
 
     /// Verify domain names in certificate to match the expected domain
@@ -295,23 +350,6 @@ impl BIMICertificate {
 }
 
 
-/// CA storage
-pub struct CAStorage {
-    store: X509Store,
-}
-
-impl CAStorage {
-    pub fn new() -> Result<Self, Error> {
-        let mut nstore = X509StoreBuilder::new()
-            .map_err(|e| Error::CAInitError(e.to_string()))?;
-        nstore.set_default_paths()
-            .map_err(|e| Error::CAInitError(e.to_string()))?;
-        Ok(Self {
-            store: nstore.build(),
-        })
-    }
-}
-
 lazy_static! {
     static ref HEADER_SRCH : TwoWaySearcher<'static> =
         TwoWaySearcher::new(b"-----BEGIN CERTIFICATE-----");
@@ -364,14 +402,6 @@ pub fn process_cert(input: &Bytes, ca_storage: &CAStorage, domain: &str)
     }
     debug!("verified key usage for domain {}", domain);
 
-    x509_bimi_get_ext(&cert.certificate);
-
-    // Verify that a cert is signed properly (expensive check)
-    if !cert.verify_ca(ca_storage)? {
-        return Err(Error::CertificateGenericVerificationError);
-    }
-
-    debug!("verified CA for domain {}", domain);
-
-    Ok(Vec::new())
+    return x509_bimi_get_ext(&cert.certificate)
+        .ok_or(Error::CertificateNoLogoTypeExt);
 }

@@ -4,6 +4,7 @@ use std::convert::Infallible;
 use url;
 use serde_derive::{Serialize};
 use log::{warn, info};
+use openssl::error::ErrorStack;
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -33,6 +34,12 @@ pub enum Error {
     CertificateExpired,
     #[error("Certificate has no valid key usage for BIMI")]
     CertificateNoKeyUsage,
+    #[error("Certificate has no valid logo type for BIMI")]
+    CertificateNoLogoTypeExt,
+    #[error("Certificate CA is not trusted: {0}")]
+    UntrustedCACert(String),
+    #[error("OpenSSL error: {0}")]
+    OpenSSLError(#[from] ErrorStack),
 }
 
 impl warp::reject::Reject for Error {}
