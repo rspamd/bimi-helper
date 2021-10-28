@@ -23,6 +23,7 @@ mod error;
 mod data;
 mod cert;
 mod mini_pki;
+mod x509_helpers;
 
 #[cfg(all(unix, feature = "drop_privs"))]
 use privdrop::PrivDrop;

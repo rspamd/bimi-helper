@@ -24,8 +24,6 @@ pub enum Error {
     TimeParseError(#[from] chrono::ParseError),
     #[error("Certificate CA verification error: {0}")]
     CertificateVerificationError(String),
-    #[error("Certificate CA verification generic error")]
-    CertificateGenericVerificationError,
     #[error("Certificate name verification error: {0}")]
     CertificateNameVerificationError(String),
     #[error("Certificate name verification generic error")]
