@@ -2,10 +2,12 @@ use warp::{http::StatusCode, Reply, Rejection};
 use dashmap::DashSet;
 use reqwest;
 use std::sync::Arc;
+use serde_json;
+use base64;
 
-use crate::error::{Error};
+use crate::error::{AppError};
 use crate::data::*;
-use crate::{cert, mini_pki};
+use crate::{cert, mini_pki, redis_storage};
 use log::{debug, info};
 
 pub async fn health_handler(inflight: Arc<DashSet<String>>) -> std::result::Result<impl Reply, Rejection> {
@@ -16,13 +18,15 @@ pub async fn health_handler(inflight: Arc<DashSet<String>>) -> std::result::Resu
 
 pub async fn check_handler(body: RequestCert, inflight: Arc<DashSet<String>>,
                            client: reqwest::Client,
-                           ca_storage: Arc<mini_pki::CAStorage>) -> std::result::Result<impl Reply, Rejection>
+                           ca_storage: Arc<mini_pki::CAStorage>,
+                           redis_storage: Arc<redis_storage::RedisStorage>)
+                           -> std::result::Result<impl Reply, Rejection>
 {
     match reqwest::Url::parse(body.url.as_str()) {
         Ok(url) => {
             if inflight.contains(url.as_str()) {
                 info!("already processing {}", body.url);
-                Err(warp::reject::custom(Error::AlreadyProcessing))
+                Err(warp::reject::custom(AppError::AlreadyProcessing))
             }
             else {
                 info!("start processing {}; {} elements currently being processed",
@@ -48,9 +52,22 @@ pub async fn check_handler(body: RequestCert, inflight: Arc<DashSet<String>>,
                                                &domain) {
                                 Err(e) => {
                                     info!("cannot process cert for {}: {:?}", domain, e);
+                                    redis_storage.store_result(&body.redis_server,
+                                                               domain.as_str(),
+                                                               serde_json::to_string(&RetreiveError{
+                                                                   error: e.to_string().as_str()
+                                                               }).unwrap().as_str())
+                                        .await;
                                 }
-                                Ok(_) => {
+                                Ok(svg_bytes) => {
                                     info!("processed certificate for {}", domain);
+                                    let encoded = base64::encode(svg_bytes);
+                                    redis_storage.store_result(&body.redis_server,
+                                                               domain.as_str(),
+                                                               serde_json::to_string(&SvgResult{
+                                                                   content: encoded.as_str()
+                                                               }).unwrap().as_str())
+                                        .await;
                                 }
                             }
                             inflight.remove(&body.url);
@@ -67,7 +84,7 @@ pub async fn check_handler(body: RequestCert, inflight: Arc<DashSet<String>>,
             }
         }
         Err(e) => {
-            Err(warp::reject::custom(Error::BadURL(e)))
+            Err(warp::reject::custom(AppError::BadURL(e)))
         }
     }
 }

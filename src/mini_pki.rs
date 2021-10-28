@@ -1,6 +1,6 @@
 use std::ops::{DerefMut};
 use openssl::x509::store::{X509StoreBuilder, X509Store};
-use crate::error::{Error};
+use crate::error::{AppError};
 use dashmap::DashMap;
 use std::sync::{Arc, RwLock};
 use openssl::x509::{X509, X509StoreContext, X509StoreContextRef};
@@ -12,13 +12,13 @@ use foreign_types::{ForeignTypeRef};
 use log::{debug, info};
 
 // Not exported by rust-openssl aside of Builder stuff
-fn add_cert_to_store(store: &mut X509Store, cert: &X509) -> Result<(), Error>
+fn add_cert_to_store(store: &mut X509Store, cert: &X509) -> Result<(), AppError>
 {
     unsafe {
         match openssl_ffi::X509_STORE_add_cert(store.as_ref().as_ptr(),
                                          cert.as_ref().as_ptr()) {
             1 => Ok(()),
-            _ => Err(Error::OpenSSLError(ErrorStack::get()))
+            _ => Err(AppError::OpenSSLError(ErrorStack::get()))
         }
     }
 }
@@ -31,11 +31,11 @@ pub struct CAStorage {
 
 impl CAStorage {
     /// Creates new CAStorage with the default CA paths and empty trusted fingerprints
-    pub fn new() -> Result<Self, Error> {
+    pub fn new() -> Result<Self, AppError> {
         let mut nstore = X509StoreBuilder::new()
-            .map_err(|e| Error::CAInitError(e.to_string()))?;
+            .map_err(|e| AppError::CAInitError(e.to_string()))?;
         nstore.set_default_paths()
-            .map_err(|e| Error::CAInitError(e.to_string()))?;
+            .map_err(|e| AppError::CAInitError(e.to_string()))?;
         Ok(Self {
             store: Arc::new(RwLock::new(nstore.build())),
             trusted_fingerprints: Arc::new(DashMap::new())
@@ -53,14 +53,14 @@ impl CAStorage {
     /// Adds a new CA certificate to the storage
     /// Certificate must match trusted fingerprints database
     /// If a certificate has been already added, this function is no-op
-    pub fn try_add_ca_cert(&self, cert: &X509) -> Result<(), Error> {
+    pub fn try_add_ca_cert(&self, cert: &X509) -> Result<(), AppError> {
         let cert_digest = cert.digest(MessageDigest::sha256())
-            .map_err(|_| Error::CertificateParseError("no digest in CA cert".to_string()))?;
+            .map_err(|_| AppError::CertificateParseError("no digest in CA cert".to_string()))?;
         let cert_digest_hex = hex::encode(cert_digest);
 
         let mut fp_count = self.trusted_fingerprints
             .get_mut(cert_digest_hex.as_str())
-            .ok_or(Error::UntrustedCACert(cert_digest_hex.clone()))?;
+            .ok_or(AppError::UntrustedCACert(cert_digest_hex.clone()))?;
 
         if *fp_count {
             // Already added
@@ -76,9 +76,9 @@ impl CAStorage {
         add_cert_to_store(ca_store.deref_mut(), cert)
     }
 
-    pub fn verify_cert(&self, cert: &X509, chain: &Stack<X509>) -> Result<(), Error> {
+    pub fn verify_cert(&self, cert: &X509, chain: &Stack<X509>) -> Result<(), AppError> {
         let mut nstore_ctx = X509StoreContext::new().
-            map_err(|e| Error::CAInitError(e.to_string()))?;
+            map_err(|e| AppError::CAInitError(e.to_string()))?;
         let ca_store = self.store.read().unwrap();
         let mut verify_error = String::new();
         let verify_result = nstore_ctx.init(&*ca_store.as_ref(), cert.as_ref(),
@@ -90,13 +90,13 @@ impl CAStorage {
 
                 Ok(res)
             })
-            .map_err(|e| Error::CertificateVerificationError(e.to_string()))?;
+            .map_err(|e| AppError::CertificateVerificationError(e.to_string()))?;
 
         // We have to store verification result in this way
         // as closure is expected to return bool/ErrorStack and ErrorStack
         // is an alien ffi structure that cannot be created directly
         if !verify_result {
-            return Err( Error::CertificateVerificationError(verify_error));
+            return Err( AppError::CertificateVerificationError(verify_error));
         }
 
         Ok(())

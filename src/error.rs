@@ -7,7 +7,7 @@ use log::{warn, info};
 use openssl::error::ErrorStack;
 
 #[derive(Error, Debug)]
-pub enum Error {
+pub enum AppError {
     #[error("error reading file: {0}")]
     ReadFileError(#[from] std::io::Error),
     #[error("already processing")]
@@ -40,7 +40,7 @@ pub enum Error {
     OpenSSLError(#[from] ErrorStack),
 }
 
-impl warp::reject::Reject for Error {}
+impl warp::reject::Reject for AppError {}
 
 #[derive(Serialize)]
 struct ErrorResponse {
@@ -58,13 +58,13 @@ pub async fn handle_rejection(err: Rejection) -> std::result::Result<impl Reply,
     } else if let Some(_) = err.find::<warp::filters::body::BodyDeserializeError>() {
         code = StatusCode::BAD_REQUEST;
         message = "Invalid Body";
-    } else if let Some(e) = err.find::<Error>() {
+    } else if let Some(e) = err.find::<AppError>() {
         match e {
-            Error::AlreadyProcessing => {
+            AppError::AlreadyProcessing => {
                 code = StatusCode::NOT_MODIFIED;
                 message = "Already processing";
             },
-            Error::BadURL(e) => {
+            AppError::BadURL(e) => {
                 info!("bad url requested: {}", e);
                 code = StatusCode::BAD_REQUEST;
                 message = "Invalid URL";

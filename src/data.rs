@@ -12,6 +12,19 @@ pub struct RequestCert {
 
 #[derive(Serialize, Clone, PartialEq, Debug)]
 pub struct HealthReply {
+    /// How many requests are now pending
     pub requests_inflight: usize,
+}
+
+#[derive(Serialize, Clone, PartialEq, Debug)]
+pub struct SvgResult<'a> {
+    /// SVG image raw data
+    pub content: &'a str,
+}
+
+#[derive(Serialize, Clone, PartialEq, Debug)]
+pub struct RetreiveError<'a> {
+    /// Error to store
+    pub error: &'a str,
 }
 

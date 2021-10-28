@@ -24,6 +24,9 @@ mod data;
 mod cert;
 mod mini_pki;
 mod x509_helpers;
+mod redis_storage;
+
+use redis_storage::RedisStorage;
 
 #[cfg(all(unix, feature = "drop_privs"))]
 use privdrop::PrivDrop;
@@ -37,14 +40,14 @@ struct Config {
     /// Verbose level (repeat for more verbosity)
     #[structopt(short = "v", long = "verbose", parse(from_occurrences))]
     verbose: u8,
-    #[cfg(all(unix, feature = "drop_privs"))]
     #[structopt(flatten)]
     #[cfg(all(unix, feature = "drop_privs"))]
     privdrop: PrivDropConfig,
-    #[structopt(parse(from_os_str))]
+    #[structopt(long = "privkey", parse(from_os_str))]
     /// Private key for SSL HTTP server
     privkey: Option<PathBuf>,
     /// X509 certificate for HTTP server
+    #[structopt(long = "cert", parse(from_os_str))]
     #[structopt(parse(from_os_str))]
     cert: Option<PathBuf>,
     /// Number of threads to start
@@ -59,6 +62,8 @@ struct Config {
     /// Trusted fingerprint
     #[structopt(short = "F", long = "fingerprint")]
     fingerprints: Option<Vec<String>>,
+    #[structopt(flatten)]
+    redis_conf : redis_storage::RedisStorageConfig,
 }
 
 #[cfg(all(unix, feature = "drop_privs"))]
@@ -109,17 +114,26 @@ fn drop_privs(privdrop: &PrivDropConfig) {
 
 type SharedSet = Arc<DashSet<String>>;
 
-fn with_dash_set(set: SharedSet) -> impl Filter<Extract = (SharedSet,), Error = Infallible> + Clone {
+fn with_dash_set(set: SharedSet)
+    -> impl Filter<Extract = (SharedSet,), Error = Infallible> + Clone {
     warp::any().map(move || set.clone())
 }
 
-fn with_http_client(client: reqwest::Client) -> impl Filter<Extract = (reqwest::Client,), Error = Infallible> + Clone {
+fn with_http_client(client: reqwest::Client)
+    -> impl Filter<Extract = (reqwest::Client,), Error = Infallible> + Clone {
     warp::any().map(move || client.clone())
 }
 
-fn with_cert_storage(storage: Arc<mini_pki::CAStorage>) -> impl Filter<Extract = (Arc<mini_pki::CAStorage>,), Error = Infallible> + Clone {
+fn with_cert_storage(storage: Arc<mini_pki::CAStorage>)
+    -> impl Filter<Extract = (Arc<mini_pki::CAStorage>,), Error = Infallible> + Clone {
     warp::any().map(move || storage.clone())
 }
+
+fn with_redis_storage(storage: Arc<redis_storage::RedisStorage>)
+    -> impl Filter<Extract = (Arc<redis_storage::RedisStorage>,), Error = Infallible> + Clone {
+    warp::any().map(move || storage.clone())
+}
+
 
 fn main() {
     let opts = Config::from_args();
@@ -146,6 +160,7 @@ fn main() {
     opts.fingerprints.as_ref().map(|fp_vec|
         fp_vec.iter()
             .for_each(|fp| ca_storage.as_ref().add_fingerprint(fp.as_str())));
+    let redis_storage = Arc::new(RedisStorage::new(opts.redis_conf.clone()));
 
     tokio::runtime::Builder::new_multi_thread()
         .worker_threads(opts.max_threads)
@@ -162,6 +177,7 @@ fn main() {
                 .and(with_dash_set(domains_inflight.clone()))
                 .and(with_http_client(http_client.clone()))
                 .and(with_cert_storage(ca_storage.clone()))
+                .and(with_redis_storage(redis_storage.clone()))
                 .and_then(handler::check_handler);
             let routes = health_route
                 .or(check_route)

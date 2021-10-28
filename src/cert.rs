@@ -8,7 +8,7 @@ use std::time::SystemTime;
 use std::net::{IpAddr};
 use log::{debug};
 
-use crate::error::{Error};
+use crate::error::{AppError};
 use crate::mini_pki::CAStorage;
 use crate::x509_helpers::*;
 
@@ -26,9 +26,9 @@ const BIMI_KEY_USAGE_OID : &'static str = "1.3.6.1.5.5.7.3.31";
 
 impl BIMICertificate {
     /// Create a certificate from PEM file (typical usage for BIMI)
-    pub fn from_pem(input : &Vec<u8>, ca_storage: &CAStorage) -> Result<Self, Error> {
+    pub fn from_pem(input : &Vec<u8>, ca_storage: &CAStorage) -> Result<Self, AppError> {
         let mut x509_stack = X509::stack_from_pem(&input)
-            .map_err(|e| Error::CertificateParseError(e.to_string()))?;
+            .map_err(|e| AppError::CertificateParseError(e.to_string()))?;
 
 
         // The first cert is the server cert and the other certs are part of
@@ -78,7 +78,7 @@ impl BIMICertificate {
     /// Verify domain names in certificate to match the expected domain
     /// This function exists because OpenSSL verification is just broken in
     /// old versions of the library
-    pub fn verify_name(&self, domain: &str) -> Result<bool, Error> {
+    pub fn verify_name(&self, domain: &str) -> Result<bool, AppError> {
         match self.certificate.subject_alt_names() {
             Some(names) => self.verify_subject_alt_names(domain, &names),
             None => self.verify_subject_name(domain, &self.certificate.subject_name()),
@@ -100,7 +100,7 @@ impl BIMICertificate {
     }
 
     fn verify_subject_alt_names(&self, domain: &str, names: &Stack<GeneralName>)
-        -> Result<bool,Error>
+        -> Result<bool, AppError>
     {
         for name in names {
             match name.dnsname() {
@@ -108,34 +108,34 @@ impl BIMICertificate {
                     return Ok(true)
                 }
                 _ => {
-                    return Err(Error::CertificateNameVerificationError("Invalid alt name"
+                    return Err(AppError::CertificateNameVerificationError("Invalid alt name"
                         .to_string()))
                 }
             }
         }
 
-        Err(Error::CertificateNameVerificationError("No matching alt name".to_string()))
+        Err(AppError::CertificateNameVerificationError("No matching alt name".to_string()))
     }
 
-    fn verify_subject_name(&self, domain: &str, x509_name: &X509NameRef) -> Result<bool, Error> {
+    fn verify_subject_name(&self, domain: &str, x509_name: &X509NameRef) -> Result<bool, AppError> {
         if let Some(pat) = x509_name.entries_by_nid(Nid::COMMONNAME).next() {
             let pattern = pat.data().as_utf8()
                 .map(|ossl_string| ossl_string.to_string())
-                .map_err(|_| Error::CertificateNameVerificationError("bad subject name"
+                .map_err(|_| AppError::CertificateNameVerificationError("bad subject name"
                     .to_string()))?;
             match domain.parse::<IpAddr>() {
-                Ok(_) => Err(Error::CertificateNameVerificationError("IP address in subject name"
+                Ok(_) => Err(AppError::CertificateNameVerificationError("IP address in subject name"
                     .to_string())),
                 Err(_) => self.verify_dns(domain, pattern.as_str())
             }
         }
         else {
-            Err(Error::CertificateNameVerificationError("no subject names".to_string()))
+            Err(AppError::CertificateNameVerificationError("no subject names".to_string()))
         }
     }
 
 
-    fn verify_dns(&self, domain: &str, pattern: &str) -> Result<bool, Error> {
+    fn verify_dns(&self, domain: &str, pattern: &str) -> Result<bool, AppError> {
         debug!("verify domain {} against pattern {}", domain, pattern);
         let domain_to_check = domain.strip_suffix('.')
             .unwrap_or(domain);
@@ -152,18 +152,18 @@ impl BIMICertificate {
             .map(|(pos, _)| pos);
         let wildcard_end = match dot_idxs.next() {
             Some(l) => l,
-            None => return Err(Error::CertificateNameVerificationError("invalid pattern"
+            None => return Err(AppError::CertificateNameVerificationError("invalid pattern"
                 .to_string())),
         };
 
         // Wildcard are allowed merely for second or more domain level (not like *.com)
         if dot_idxs.next().is_none() {
-            return Err(Error::CertificateNameVerificationError("too short wildcard".to_string()));
+            return Err(AppError::CertificateNameVerificationError("too short wildcard".to_string()));
         }
 
         // Wildcards can only be in the first component, not something like foo.*.com
         if wildcard_location > wildcard_end {
-            return Err(Error::CertificateNameVerificationError("invalid wildcard".to_string()));
+            return Err(AppError::CertificateNameVerificationError("invalid wildcard".to_string()));
         }
 
         // Domain could be a single label, but it is not a subject to wildcard
@@ -214,10 +214,10 @@ fn check_pem(input: &Bytes) -> bool
 
 
 pub fn process_cert(input: &Bytes, ca_storage: &CAStorage, domain: &str)
-    -> Result<Vec<u8>, Error>
+    -> Result<Vec<u8>, AppError>
 {
     if !check_pem(&input) {
-        return Err(Error::BadPEM);
+        return Err(AppError::BadPEM);
     }
 
     debug!("got likely valid pem for domain {}", domain);
@@ -228,17 +228,17 @@ pub fn process_cert(input: &Bytes, ca_storage: &CAStorage, domain: &str)
 
     // Do cheap checks: name, time, extended key usage
     if !cert.verify_name(domain)? {
-        return Err(Error::CertificateGenericNameVerificationError);
+        return Err(AppError::CertificateGenericNameVerificationError);
     }
     debug!("verified name for domain {}", domain);
 
     if !cert.verify_expiry() {
-        return Err(Error::CertificateExpired);
+        return Err(AppError::CertificateExpired);
     }
     debug!("verified expiry for domain {}", domain);
 
     if !cert.verify_key_usage() {
-        return Err(Error::CertificateNoKeyUsage);
+        return Err(AppError::CertificateNoKeyUsage);
     }
     debug!("verified key usage for domain {}", domain);
 
@@ -246,5 +246,5 @@ pub fn process_cert(input: &Bytes, ca_storage: &CAStorage, domain: &str)
     debug!("verified PKI for domain {}", domain);
 
     return x509_bimi_get_ext(&cert.certificate)
-        .ok_or(Error::CertificateNoLogoTypeExt);
+        .ok_or(AppError::CertificateNoLogoTypeExt);
 }

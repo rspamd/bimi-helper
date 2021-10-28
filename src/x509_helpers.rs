@@ -4,14 +4,16 @@ use openssl::x509::{X509};
 use chrono::{NaiveDateTime, DateTime, Utc};
 use memmem::{Searcher, TwoWaySearcher};
 use std::ffi::CString;
-use crate::error::{Error};
 use libc::{c_int};
 use std::slice;
 use std::fmt;
 use std::ptr;
 use foreign_types::{ForeignType};
 
-pub fn parse_openssl_time(time: &Asn1TimeRef) -> Result<DateTime<Utc>, Error> {
+use crate::error::{AppError};
+
+/// Missing function to parse ASN.1 time to normal time
+pub fn parse_openssl_time(time: &Asn1TimeRef) -> Result<DateTime<Utc>, AppError> {
     let time = time.to_string();
     let time = NaiveDateTime::parse_from_str(&time, "%b %e %H:%M:%S %Y GMT")?;
     Ok(DateTime::<Utc>::from_utc(time, Utc))
@@ -65,6 +67,7 @@ impl Stackable for ExtendedKeyUsage {
     type StackType = openssl_ffi::stack_st_ASN1_OBJECT;
 }
 
+/// Returns a list of extended key usage extensions
 pub fn get_x509_extended_key_usage(cert: &X509) -> Option<Stack<ExtendedKeyUsage>> {
     // This function is not provided by rust-openssl, have to use ffi
     unsafe {
@@ -82,6 +85,7 @@ pub fn get_x509_extended_key_usage(cert: &X509) -> Option<Stack<ExtendedKeyUsage
     }
 }
 
+/// Returns true if certificate has CA usage flag
 pub fn x509_is_ca(cert: &X509) -> bool {
     unsafe {
         let flags = openssl_ffi::X509_get_extension_flags(
@@ -103,6 +107,8 @@ lazy_static! {
 
 const BIMI_IMAGE_OID : &'static str = "1.3.6.1.5.5.7.1.12";
 
+/// Get BIMI extension by finding a logotype OID and do a (very) naive
+/// parsing of it's structure
 pub fn x509_bimi_get_ext(cert: &X509) -> Option<Vec<u8>>
 {
     unsafe {
