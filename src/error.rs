@@ -1,6 +1,7 @@
 use thiserror::Error;
 use warp::{http::StatusCode, Reply, Rejection};
 use std::convert::Infallible;
+use data_url::DataUrlError;
 use url;
 use serde_derive::{Serialize};
 use log::{warn, info};
@@ -34,6 +35,8 @@ pub enum AppError {
     CertificateNoKeyUsage,
     #[error("Certificate has no valid logo type for BIMI")]
     CertificateNoLogoTypeExt,
+    #[error("Certificate has no valid logo url")]
+    CertificateInvalidLogoURL,
     #[error("Certificate CA is not trusted: {0}")]
     UntrustedCACert(String),
     #[error("OpenSSL error: {0}")]

@@ -168,7 +168,8 @@ pub fn x509_bimi_get_ext(cert: &X509) -> Option<Vec<u8>>
         let len = openssl_ffi::ASN1_STRING_length(obj_data as *mut _);
         let slice = slice::from_raw_parts(ptr as *const u8, len as usize);
         let svg_pos = SVG_SEARCHER.search_in(slice)?;
+        let svg_slice = slice.get(svg_pos..slice.len())?;
 
-        slice.get(svg_pos..slice.len()).map(|sl| sl.to_vec())
+        Some(svg_slice.to_vec())
     }
 }

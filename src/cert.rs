@@ -6,7 +6,9 @@ use openssl::nid::Nid;
 use chrono::{DateTime, Utc};
 use std::time::SystemTime;
 use std::net::{IpAddr};
+use std::str;
 use log::{debug};
+use data_url::DataUrl;
 
 use crate::error::{AppError};
 use crate::mini_pki::CAStorage;
@@ -245,6 +247,22 @@ pub fn process_cert(input: &Bytes, ca_storage: &CAStorage, domain: &str)
     ca_storage.verify_cert(&cert.certificate, &cert.chain)?;
     debug!("verified PKI for domain {}", domain);
 
-    return x509_bimi_get_ext(&cert.certificate)
-        .ok_or(AppError::CertificateNoLogoTypeExt);
+    let image_vec = x509_bimi_get_ext(&cert.certificate)
+        .ok_or(AppError::CertificateNoLogoTypeExt)?;
+
+    if image_vec.starts_with("data:".as_bytes()) {
+        debug!("got data url for {}", domain);
+        let image_str = str::from_utf8(&image_vec)
+            .or_else(|_| Err(AppError::CertificateInvalidLogoURL))?;
+        debug!("got data url for {}", image_str);
+        let image_url = DataUrl::process(image_str)
+            .map_err(|_| AppError::CertificateInvalidLogoURL)?;
+        let image_data = image_url
+            .decode_to_vec()
+            .map_err(|_| AppError::CertificateInvalidLogoURL)?;
+        Ok(image_data.0)
+    }
+    else {
+        Ok(image_vec)
+    }
 }
