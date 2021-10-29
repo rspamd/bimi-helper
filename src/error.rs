@@ -1,11 +1,12 @@
 use thiserror::Error;
 use warp::{http::StatusCode, Reply, Rejection};
 use std::convert::Infallible;
-use data_url::DataUrlError;
 use url;
 use serde_derive::{Serialize};
 use log::{warn, info};
 use openssl::error::ErrorStack;
+use redis::RedisError;
+use tokio::time::error::Elapsed;
 
 #[derive(Error, Debug)]
 pub enum AppError {
@@ -41,6 +42,10 @@ pub enum AppError {
     UntrustedCACert(String),
     #[error("OpenSSL error: {0}")]
     OpenSSLError(#[from] ErrorStack),
+    #[error("Redis error: {0}")]
+    RedisError(#[from] RedisError),
+    #[error("IO timeout")]
+    IOTimeoutError(#[from] Elapsed),
 }
 
 impl warp::reject::Reject for AppError {}

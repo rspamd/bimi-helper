@@ -1,6 +1,9 @@
 extern crate redis;
 use structopt::StructOpt;
-use self::redis::AsyncCommands;
+use self::redis::{AsyncCommands};
+use tokio::time::timeout;
+use std::time::Duration;
+use crate::error::{AppError};
 
 #[derive(Debug, StructOpt, Clone)]
 pub struct RedisStorageConfig {
@@ -26,21 +29,38 @@ impl RedisStorage {
     }
 
     pub async fn store_result(&self, server : &str, key : &str, data : &str)
-        -> Result<(), redis::RedisError>
+        -> Result<(), AppError>
     {
         let client = redis::Client::open(server)?;
         let mut conn = client.get_async_connection().await?;
-        match &self.config.prefix {
+        let expiry = (self.config.expiry * 1000.0) as usize;
+
+        let real_key = match &self.config.prefix {
             Some(prefix) => {
-                let prefixed_key = String::from(prefix) + key;
-                conn.pset_ex(prefixed_key, data, (self.config.expiry * 1000.0) as usize)
-                    .await?;
+                String::from(prefix) + key
             }
             None => {
-                conn.pset_ex(key, data, (self.config.expiry * 1000.0) as usize)
-                    .await?;
+                key.to_string()
             }
-        }
+        };
+
+        let cmd_fut = async {
+            conn.pset_ex(real_key, data, expiry).await?;
+            Ok::<(), redis::RedisError>(())
+        };
+        match timeout(Duration::from_secs_f32(self.config.timeout),
+                cmd_fut).await {
+            Ok(res) => {
+                match res {
+                    Ok(_) => Ok(()),
+                    Err(e) => Err(AppError::RedisError(e))
+                }
+            }
+            Err(e) => {
+                Err(AppError::IOTimeoutError(e))
+            }
+        }?;
+
         Ok(())
     }
 }

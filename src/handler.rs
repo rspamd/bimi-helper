@@ -8,7 +8,7 @@ use base64;
 use crate::error::{AppError};
 use crate::data::*;
 use crate::{cert, mini_pki, redis_storage};
-use log::{debug, info};
+use log::{info, warn};
 
 pub async fn health_handler(inflight: Arc<DashSet<String>>) -> std::result::Result<impl Reply, Rejection> {
     Ok(warp::reply::json(&HealthReply{
@@ -48,28 +48,30 @@ pub async fn check_handler(body: RequestCert, inflight: Arc<DashSet<String>>,
                     match resp.await {
                         Ok(o) => {
                             info!("got result from {}: length = {}", &body.url, o.len());
-                            match cert::process_cert(&o, ca_storage.as_ref(),
+                            let result = match cert::process_cert(&o, ca_storage.as_ref(),
                                                &domain) {
                                 Err(e) => {
                                     info!("cannot process cert for {}: {:?}", domain, e);
-                                    redis_storage.store_result(&body.redis_server,
-                                                               domain.as_str(),
-                                                               serde_json::to_string(&RetreiveError{
-                                                                   error: e.to_string().as_str()
-                                                               }).unwrap().as_str())
-                                        .await;
+                                    serde_json::to_string(&RetreiveError{
+                                        error: e.to_string().as_str()
+                                    }).unwrap()
                                 }
                                 Ok(svg_bytes) => {
                                     info!("processed certificate for {}", domain);
                                     let encoded = base64::encode(svg_bytes);
-                                    redis_storage.store_result(&body.redis_server,
-                                                               domain.as_str(),
-                                                               serde_json::to_string(&SvgResult{
-                                                                   content: encoded.as_str()
-                                                               }).unwrap().as_str())
-                                        .await;
+                                    serde_json::to_string(&SvgResult{
+                                        content: encoded.as_str()
+                                    }).unwrap()
                                 }
-                            }
+                            };
+                            redis_storage.store_result(&body.redis_server,
+                                                      domain.as_str(),
+                                                       result.as_str())
+                                .await
+                                .unwrap_or_else(|e| {
+                                    warn!("cannot store results for domain {} to redis: {:?}",
+                                        domain.as_str(), e);
+                                });
                             inflight.remove(&body.url);
                             Ok(())
                         }
@@ -80,6 +82,8 @@ pub async fn check_handler(body: RequestCert, inflight: Arc<DashSet<String>>,
                         }
                     }
                 });
+                // We do not await this future as the idea is to perform
+                // all those lookups asynchronously
                 Ok(StatusCode::OK)
             }
         }

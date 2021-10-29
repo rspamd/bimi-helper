@@ -5,7 +5,7 @@ extern crate openssl_sys as openssl_ffi;
 extern crate foreign_types;
 
 use log::LevelFilter;
-use log::{debug, info, warn};
+use log::{info};
 use std::path::PathBuf;
 
 use std::net::SocketAddr;
