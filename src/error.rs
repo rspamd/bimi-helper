@@ -46,6 +46,8 @@ pub enum AppError {
     RedisError(#[from] RedisError),
     #[error("IO timeout")]
     IOTimeoutError(#[from] Elapsed),
+    #[error("Invalid trusted fingerprint (must be hex of sha256)")]
+    InvalidFingerprint,
 }
 
 impl warp::reject::Reject for AppError {}

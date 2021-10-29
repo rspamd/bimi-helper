@@ -45,9 +45,18 @@ impl CAStorage {
     /// Adds a new trusted fingerprint to the list
     /// Fingerprint must be hex representation of sha256 for the desired
     /// CA certificate.
-    pub fn add_fingerprint(&self, fp: &str) {
+    pub fn add_fingerprint(&self, fp: &str) -> Result<(), AppError> {
+        // Must be specific length
+        if fp.len() != 256 / 8 * 2 {
+            return Err(AppError::InvalidFingerprint);
+        }
+        // Must have only hex characters
+        if !fp.chars().all(|c| c.is_ascii_hexdigit()) {
+            return Err(AppError::InvalidFingerprint);
+        }
         info!("added trusted fingerprint {}", fp);
         self.trusted_fingerprints.insert(fp.to_string(), false);
+        Ok(())
     }
 
     /// Adds a new CA certificate to the storage

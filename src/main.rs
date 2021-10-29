@@ -6,7 +6,6 @@ extern crate foreign_types;
 
 use log::LevelFilter;
 use log::{info};
-use std::path::PathBuf;
 
 use std::net::SocketAddr;
 use structopt::StructOpt;
@@ -17,6 +16,9 @@ use dashmap::DashSet;
 use std::sync::Arc;
 use std::convert::Infallible;
 use std::time::Duration;
+use std::fs::File;
+use std::io::{self, BufRead};
+use std::path::{PathBuf, Path};
 
 mod handler;
 mod error;
@@ -27,6 +29,7 @@ mod x509_helpers;
 mod redis_storage;
 
 use redis_storage::RedisStorage;
+use crate::error::AppError;
 
 #[cfg(all(unix, feature = "drop_privs"))]
 use privdrop::PrivDrop;
@@ -62,6 +65,9 @@ struct Config {
     /// Trusted fingerprint
     #[structopt(short = "F", long = "fingerprint")]
     fingerprints: Option<Vec<String>>,
+    /// Trusted fingerprints file
+    #[structopt(long = "fingerprints-file")]
+    fingerprints_file: Option<String>,
     #[structopt(flatten)]
     redis_conf : redis_storage::RedisStorageConfig,
 }
@@ -134,8 +140,14 @@ fn with_redis_storage(storage: Arc<redis_storage::RedisStorage>)
     warp::any().map(move || storage.clone())
 }
 
+fn read_lines<P>(filename: P) -> io::Result<io::Lines<io::BufReader<File>>>
+    where P: AsRef<Path>, {
+    let file = File::open(filename)?;
+    Ok(io::BufReader::new(file).lines())
+}
 
-fn main() {
+
+fn main()  -> Result<(), AppError> {
     let opts = Config::from_args();
     let has_sane_tls = opts.privkey.is_some() && opts.cert.is_some();
     let log_level = match opts.verbose {
@@ -156,10 +168,24 @@ fn main() {
         .init();
     let domains_inflight : SharedSet =
         Arc::new(DashSet::with_capacity(128));
+
+    // Create CA storage and add trusted fingerprints
     let ca_storage = Arc::new(mini_pki::CAStorage::new().unwrap());
-    opts.fingerprints.as_ref().map(|fp_vec|
-        fp_vec.iter()
-            .for_each(|fp| ca_storage.as_ref().add_fingerprint(fp.as_str())));
+    if let Some(ref fp_vec) = opts.fingerprints {
+        for fp in fp_vec.iter() {
+            ca_storage.as_ref().add_fingerprint(fp.as_str())?;
+        }
+    }
+    if let Some(ref fname) = opts.fingerprints_file {
+        if let Ok(lines) = read_lines(fname) {
+            for ln in lines {
+                if let Ok(fp) = ln {
+                    ca_storage.as_ref().add_fingerprint(fp.trim())?;
+                }
+            }
+        }
+    }
+
     let redis_storage = Arc::new(RedisStorage::new(opts.redis_conf.clone()));
 
     tokio::runtime::Builder::new_multi_thread()
@@ -205,5 +231,6 @@ fn main() {
                     .await;
             }
         });
+    Ok(())
 }
 

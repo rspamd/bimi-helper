@@ -64,7 +64,7 @@ to be able to validate pem from `valimail`. The sha256 of this cert is `504386c9
 - [x] Implement a simple extractor for LOGOTYPE images asn.1 structure
 - [x] Implement storage for BIMI images in Redis
 - [ ] Write tests
-- [ ] Implement reading from a file with trusted fingerprints
+- [x] Implement reading from a file with trusted fingerprints
 - [ ] Add systemd units and other helping stuff
 - [ ] Add integration to Rspamd
 - [ ] Work with plain SVG images from `l=` anchor in BIMI records
