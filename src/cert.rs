@@ -14,7 +14,6 @@ use crate::error::{AppError};
 use crate::mini_pki::CAStorage;
 use crate::x509_helpers::*;
 
-
 /// Chain of certificates to be validated
 pub struct BIMICertificate {
     certificate: X509,
@@ -80,10 +79,10 @@ impl BIMICertificate {
     /// Verify domain names in certificate to match the expected domain
     /// This function exists because OpenSSL verification is just broken in
     /// old versions of the library
-    pub fn verify_name(&self, domain: &str) -> Result<bool, AppError> {
+    pub fn verify_name(&self, domain: &str) -> Result<(), AppError> {
         match self.certificate.subject_alt_names() {
-            Some(names) => self.verify_subject_alt_names(domain, &names),
-            None => self.verify_subject_name(domain, &self.certificate.subject_name()),
+            Some(names) => verify_subject_alt_names(domain, &names),
+            None => verify_subject_name(domain, &self.certificate.subject_name()),
         }
     }
 
@@ -101,95 +100,112 @@ impl BIMICertificate {
         return self.key_usages.contains(&String::from(BIMI_KEY_USAGE_OID));
     }
 
-    fn verify_subject_alt_names(&self, domain: &str, names: &Stack<GeneralName>)
-        -> Result<bool, AppError>
-    {
-        for name in names {
-            match name.dnsname() {
-                Some(n) => if self.verify_dns(domain, n)? {
-                    return Ok(true)
-                }
-                _ => {
-                    return Err(AppError::CertificateNameVerificationError("Invalid alt name"
-                        .to_string()))
-                }
-            }
-        }
+}
 
-        Err(AppError::CertificateNameVerificationError("No matching alt name".to_string()))
-    }
-
-    fn verify_subject_name(&self, domain: &str, x509_name: &X509NameRef) -> Result<bool, AppError> {
-        if let Some(pat) = x509_name.entries_by_nid(Nid::COMMONNAME).next() {
-            let pattern = pat.data().as_utf8()
-                .map(|ossl_string| ossl_string.to_string())
-                .map_err(|_| AppError::CertificateNameVerificationError("bad subject name"
-                    .to_string()))?;
-            match domain.parse::<IpAddr>() {
-                Ok(_) => Err(AppError::CertificateNameVerificationError("IP address in subject name"
-                    .to_string())),
-                Err(_) => self.verify_dns(domain, pattern.as_str())
-            }
-        }
-        else {
-            Err(AppError::CertificateNameVerificationError("no subject names".to_string()))
-        }
-    }
-
-
-    fn verify_dns(&self, domain: &str, pattern: &str) -> Result<bool, AppError> {
-        debug!("verify domain {} against pattern {}", domain, pattern);
-        let domain_to_check = domain.strip_suffix('.')
-            .unwrap_or(domain);
-        let pattern_to_check = pattern.strip_suffix('.').
-            unwrap_or(pattern);
-
-        // Check either wildcard definitions of just the whole name
-        let wildcard_location = match pattern_to_check.find('*') {
-            Some(positions) => positions,
-            None => return Ok(domain_to_check == pattern_to_check),
-        };
-
-        let mut dot_idxs = pattern_to_check.match_indices('.')
-            .map(|(pos, _)| pos);
-        let wildcard_end = match dot_idxs.next() {
-            Some(l) => l,
-            None => return Err(AppError::CertificateNameVerificationError("invalid pattern"
+/// Verifies subject name for a certificate
+fn verify_subject_name(domain: &str, x509_name: &X509NameRef) -> Result<(), AppError> {
+    if let Some(pat) = x509_name.entries_by_nid(Nid::COMMONNAME).next() {
+        let pattern = pat.data().as_utf8()
+            .map(|ossl_string| ossl_string.to_string())
+            .map_err(|_| AppError::CertificateNameVerificationError("bad subject name"
+                .to_string()))?;
+        match domain.parse::<IpAddr>() {
+            Ok(_) => Err(AppError::CertificateNameVerificationError("IP address in subject name"
                 .to_string())),
-        };
-
-        // Wildcard are allowed merely for second or more domain level (not like *.com)
-        if dot_idxs.next().is_none() {
-            return Err(AppError::CertificateNameVerificationError("too short wildcard".to_string()));
+            Err(_) => verify_dns(domain, pattern.as_str())
         }
-
-        // Wildcards can only be in the first component, not something like foo.*.com
-        if wildcard_location > wildcard_end {
-            return Err(AppError::CertificateNameVerificationError("invalid wildcard".to_string()));
-        }
-
-        // Domain could be a single label, but it is not a subject to wildcard
-        // matching then
-        let first_label_pos = match domain_to_check.find('.') {
-            Some(pos) => pos,
-            None => return Ok(false),
-        };
-
-        // Check that the non-wildcard parts are identical
-        if pattern_to_check[wildcard_end..] != domain_to_check[first_label_pos..] {
-            return Ok(false);
-        }
-
-        let wildcard_prefix = &pattern_to_check[..wildcard_location];
-        let wildcard_suffix = &pattern_to_check[wildcard_location + 1..wildcard_end];
-        let hostname_label = &domain_to_check[..first_label_pos];
-
-        // Check that part before wildcard is equal and then check the remaining
-        return Ok(hostname_label.starts_with(wildcard_prefix) &&
-            hostname_label[wildcard_prefix.len()..].ends_with(wildcard_suffix))
+    }
+    else {
+        Err(AppError::CertificateNameVerificationError("no subject names".to_string()))
     }
 }
 
+/// Verifies a stack of alt names
+fn verify_subject_alt_names(domain: &str, names: &Stack<GeneralName>)
+                            -> Result<(), AppError>
+{
+    for name in names {
+        match name.dnsname() {
+            Some(n) => if verify_dns(domain, n).is_ok() {
+                // If any name matches, we assume it as a successful match
+                return Ok(());
+            },
+            _ => {
+                return Err(AppError::CertificateNameVerificationError("Invalid alt name"
+                    .to_string()))
+            }
+        }
+    }
+
+    Err(AppError::CertificateNameVerificationError("No matching alt name".to_string()))
+}
+
+/// Verifies a single domain for a certificate counting wildcards
+fn verify_dns(domain: &str, pattern: &str) -> Result<(), AppError> {
+    debug!("verify domain {} against pattern {}", domain, pattern);
+    let domain_to_check = domain.strip_suffix('.')
+        .unwrap_or(domain);
+    let pattern_to_check = pattern.strip_suffix('.').
+        unwrap_or(pattern);
+
+    // Check either wildcard definitions of just the whole name
+    let wildcard_location = match pattern_to_check.find('*') {
+        Some(positions) => positions,
+        None => if domain_to_check == pattern_to_check {
+            return Ok(());
+        }
+        else {
+            return Err(AppError::CertificateNameVerificationError("Cannot verify domain name"
+                .to_string()))
+        }
+    };
+
+    let mut dot_idxs = pattern_to_check.match_indices('.')
+        .map(|(pos, _)| pos);
+    let wildcard_end = match dot_idxs.next() {
+        Some(l) => l,
+        None => return Err(AppError::CertificateNameVerificationError("invalid pattern"
+            .to_string())),
+    };
+
+    // Wildcard are allowed merely for second or more domain level (not like *.com)
+    if dot_idxs.next().is_none() {
+        return Err(AppError::CertificateNameVerificationError("too short wildcard".to_string()));
+    }
+
+    // Wildcards can only be in the first component, not something like foo.*.com
+    if wildcard_location > wildcard_end {
+        return Err(AppError::CertificateNameVerificationError("invalid wildcard".to_string()));
+    }
+
+    // Domain could be a single label, but it is not a subject to wildcard
+    // matching then
+    let first_label_pos = match domain_to_check.find('.') {
+        Some(pos) => pos,
+        None => {
+            return Err(AppError::CertificateNameVerificationError("cannot match single label with wildcard"
+                .to_string()));
+        },
+    };
+
+    // Check that the non-wildcard parts are identical
+    if pattern_to_check[wildcard_end..] != domain_to_check[first_label_pos..] {
+        return Err(AppError::CertificateNameVerificationError("cannot match wildcard".to_string()));
+    }
+
+    let wildcard_prefix = &pattern_to_check[..wildcard_location];
+    let wildcard_suffix = &pattern_to_check[wildcard_location + 1..wildcard_end];
+    let hostname_label = &domain_to_check[..first_label_pos];
+
+    // Check that part before wildcard is equal and then check the remaining
+    if hostname_label.starts_with(wildcard_prefix) &&
+        hostname_label[wildcard_prefix.len()..].ends_with(wildcard_suffix) {
+        Ok(())
+    }
+    else {
+        Err(AppError::CertificateNameVerificationError("cannot match wildcard".to_string()))
+    }
+}
 
 lazy_static! {
     static ref HEADER_SRCH : TwoWaySearcher<'static> =
@@ -229,9 +245,7 @@ pub fn process_cert(input: &Bytes, ca_storage: &CAStorage, domain: &str)
     debug!("got valid pem for domain {}", domain);
 
     // Do cheap checks: name, time, extended key usage
-    if !cert.verify_name(domain)? {
-        return Err(AppError::CertificateGenericNameVerificationError);
-    }
+    cert.verify_name(domain)?;
     debug!("verified name for domain {}", domain);
 
     if !cert.verify_expiry() {
@@ -264,5 +278,57 @@ pub fn process_cert(input: &Bytes, ca_storage: &CAStorage, domain: &str)
     }
     else {
         Ok(image_vec)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::cert::{verify_dns, process_cert};
+    use crate::mini_pki::CAStorage;
+    use bytes::Bytes;
+
+    #[test]
+    fn verify_names() {
+        verify_dns("paypal.com", "paypal.com").unwrap();
+        verify_dns("paypal.com.", "paypal.com").unwrap();
+        verify_dns("paypal.com", "paypal.com.").unwrap();
+        verify_dns("paypal.com.", "paypal.com.").unwrap();
+        verify_dns("sub.paypal.com", "paypal.com").unwrap_err();
+
+        // Subdomains
+        verify_dns("sub.paypal.com", "*.paypal.com").unwrap();
+        verify_dns("sub.sub.paypal.com", "*.paypal.com").unwrap_err();
+        verify_dns("sub.sub.paypal.com", "*.sub.paypal.com").unwrap();
+        // Non-ascii
+        verify_dns("paypal.com", "paypal.cоm").unwrap_err();
+        // Wildcard vs tld -> should not match
+        verify_dns("paypal.com", "*.paypal.com").unwrap_err();
+        // Too wide pattern
+        verify_dns("paypal.com", "*.com").unwrap_err();
+        // Cannot match patterns at the end
+        assert!(verify_dns("paypal.com", "paypal.co*").is_err());
+    }
+
+    #[test]
+    fn verify_assets() {
+        let ca_storage = CAStorage::new().unwrap();
+        let good_ca_storage = CAStorage::new().unwrap();
+        // Valimail cert
+        good_ca_storage
+            .add_fingerprint("504386c9ee8932fecc95fade427f69c3e2534b7310489e300fee448e33c46b42")
+            .unwrap();
+        // Expired cert
+        process_cert(&read_bytes("test-assets/paypal.pem").unwrap(),
+                     &ca_storage, "paypal.com").unwrap_err();
+        // Good cert but must use valid fingerprint
+        process_cert(&read_bytes("test-assets/paypal.pem").unwrap(),
+                     &ca_storage, "paypal.com").unwrap_err();
+        process_cert(&read_bytes("test-assets/valimail.pem").unwrap(),
+                     &good_ca_storage, "valimail.com").unwrap();
+    }
+
+    fn read_bytes(fname : &str) -> Option<Bytes> {
+        let bytes_vec = std::fs::read(fname).unwrap();
+        Some(Bytes::from(bytes_vec))
     }
 }

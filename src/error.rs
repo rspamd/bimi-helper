@@ -28,8 +28,6 @@ pub enum AppError {
     CertificateVerificationError(String),
     #[error("Certificate name verification error: {0}")]
     CertificateNameVerificationError(String),
-    #[error("Certificate name verification generic error")]
-    CertificateGenericNameVerificationError,
     #[error("Certificate is expired")]
     CertificateExpired,
     #[error("Certificate has no valid key usage for BIMI")]
