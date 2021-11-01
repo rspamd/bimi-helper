@@ -66,7 +66,67 @@ pub async fn check_handler(body: RequestCert, inflight: Arc<DashSet<String>>,
                             };
                             redis_storage.store_result(&body.redis_server,
                                                       domain.as_str(),
-                                                       result.as_str())
+                                                       result.as_bytes())
+                                .await
+                                .unwrap_or_else(|e| {
+                                    warn!("cannot store results for domain {} to redis: {:?}",
+                                        domain.as_str(), e);
+                                });
+                            inflight.remove(&body.url);
+                            Ok(())
+                        }
+                        Err(e) => {
+                            info!("cannot get results from {}: {}", &body.url, e);
+                            inflight.remove(&body.url);
+                            Err(e)
+                        }
+                    }
+                });
+                // We do not await this future as the idea is to perform
+                // all those lookups asynchronously
+                Ok(StatusCode::OK)
+            }
+        }
+        Err(e) => {
+            Err(warp::reject::custom(AppError::BadURL(e)))
+        }
+    }
+}
+
+pub async fn svg_handler(body: RequestCert, inflight: Arc<DashSet<String>>,
+                           client: reqwest::Client,
+                           redis_storage: Arc<redis_storage::RedisStorage>)
+                           -> std::result::Result<impl Reply, Rejection>
+{
+    match reqwest::Url::parse(body.url.as_str()) {
+        Ok(url) => {
+            if inflight.contains(url.as_str()) {
+                info!("already processing {}", body.url);
+                Err(warp::reject::custom(AppError::AlreadyProcessing))
+            }
+            else {
+                info!("start processing {}; {} elements currently being processed",
+                    &body.url, inflight.len());
+                tokio::spawn(async move {
+                    inflight.insert(body.url.clone());
+                    let domain = body.domain;
+                    let req = client.get(url).send();
+                    let resp = match req.await {
+                        Ok(o) => {
+                            o.bytes()
+                        }
+                        Err(e) => {
+                            info!("cannot get send request to {}: {}", &body.url, e);
+                            inflight.remove(&body.url);
+                            return Err(e);
+                        }
+                    };
+                    match resp.await {
+                        Ok(o) => {
+                            info!("got SVG result from {}: length = {}", &body.url, o.len());
+                            redis_storage.store_result(&body.redis_server,
+                                                       domain.as_str(),
+                                                       o.to_vec().as_slice())
                                 .await
                                 .unwrap_or_else(|e| {
                                     warn!("cannot store results for domain {} to redis: {:?}",

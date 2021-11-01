@@ -197,6 +197,7 @@ fn main()  -> Result<(), AppError> {
             let health_route = warp::path!("health")
                 .and(with_dash_set(domains_inflight.clone()))
                 .and_then(handler::health_handler);
+            // Path to verify VMC
             let check_route = warp::path!("check")
                 .and(warp::post())
                 .and(warp::body::json())
@@ -205,8 +206,17 @@ fn main()  -> Result<(), AppError> {
                 .and(with_cert_storage(ca_storage.clone()))
                 .and(with_redis_storage(redis_storage.clone()))
                 .and_then(handler::check_handler);
+            // Path to download SVG only
+            let svg_route = warp::path!("svg")
+                .and(warp::post())
+                .and(warp::body::json())
+                .and(with_dash_set(domains_inflight.clone()))
+                .and(with_http_client(http_client.clone()))
+                .and(with_redis_storage(redis_storage.clone()))
+                .and_then(handler::svg_handler);
             let routes = health_route
                 .or(check_route)
+                .or(svg_route)
                 .with(warp::cors().allow_any_origin())
                 .recover(error::handle_rejection);
 

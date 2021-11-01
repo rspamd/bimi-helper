@@ -28,7 +28,7 @@ impl RedisStorage {
         }
     }
 
-    pub async fn store_result(&self, server : &str, key : &str, data : &str)
+    pub async fn store_result(&self, server : &str, key : &str, data : &[u8])
         -> Result<(), AppError>
     {
         let client = redis::Client::open(server)?;
