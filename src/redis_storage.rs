@@ -28,8 +28,9 @@ impl RedisStorage {
         }
     }
 
-    pub async fn store_result(&self, server : &str, key : &str, data : &[u8])
+    pub async fn store_result<T>(&self, server : &str, key : &str, data : T)
         -> Result<(), AppError>
+    where T: redis::ToRedisArgs + Send + Sync
     {
         let client = redis::Client::open(server)?;
         let mut conn = client.get_async_connection().await?;

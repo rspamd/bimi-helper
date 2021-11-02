@@ -8,6 +8,8 @@ pub struct RequestCert {
     pub domain: String,
     /// Redis server to store results
     pub redis_server: String,
+    /// Whether a client wants reply immediately
+    pub sync: Option<bool>,
 }
 
 #[derive(Serialize, Clone, PartialEq, Debug)]
