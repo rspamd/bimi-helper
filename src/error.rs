@@ -6,6 +6,7 @@ use serde_derive::{Serialize};
 use log::{warn, info};
 use openssl::error::ErrorStack;
 use redis::RedisError;
+use tokio::task::JoinError;
 use tokio::time::error::Elapsed;
 
 #[derive(Error, Debug)]
@@ -46,6 +47,10 @@ pub enum AppError {
     IOTimeoutError(#[from] Elapsed),
     #[error("Invalid trusted fingerprint (must be hex of sha256)")]
     InvalidFingerprint,
+    #[error("Future handling error")]
+    JoinError(#[from] JoinError),
+    #[error("HTTP client error")]
+    HTTPClientError(#[from] reqwest::Error)
 }
 
 impl warp::reject::Reject for AppError {}

@@ -22,7 +22,7 @@ pub async fn check_handler(body: RequestCert, inflight: Arc<DashSet<String>>,
                            client: reqwest::Client,
                            ca_storage: Arc<mini_pki::CAStorage>,
                            redis_storage: Arc<redis_storage::RedisStorage>)
-                           -> Result<impl Reply, Rejection>
+                           -> Result<Box<dyn warp::Reply>, Rejection>
 {
     match reqwest::Url::parse(body.url.as_str()) {
         Ok(url) => {
@@ -48,7 +48,7 @@ pub async fn check_handler(body: RequestCert, inflight: Arc<DashSet<String>>,
                     }
                 };
                 Ok(result)
-            })
+            }).await
         }
         Err(e) => {
             Err(warp::reject::custom(AppError::BadURL(e)))
@@ -59,7 +59,7 @@ pub async fn check_handler(body: RequestCert, inflight: Arc<DashSet<String>>,
 pub async fn svg_handler(body: RequestCert, inflight: Arc<DashSet<String>>,
                            client: reqwest::Client,
                            redis_storage: Arc<redis_storage::RedisStorage>)
-                           -> std::result::Result<impl Reply, Rejection>
+                           -> Result<Box<dyn warp::Reply>, Rejection>
 {
     match reqwest::Url::parse(body.url.as_str()) {
         Ok(url) => {
@@ -67,7 +67,7 @@ pub async fn svg_handler(body: RequestCert, inflight: Arc<DashSet<String>>,
                            move |o, req| {
                 info!("got SVG result from {}: length = {}", &req.url, o.len());
                 Ok(o.to_vec())
-            })
+            }).await
         }
         Err(e) => {
             Err(warp::reject::custom(AppError::BadURL(e)))
@@ -75,14 +75,14 @@ pub async fn svg_handler(body: RequestCert, inflight: Arc<DashSet<String>>,
     }
 }
 
-fn handle_request<T, F>(body: RequestCert,
+async fn handle_request<T, F>(body: RequestCert,
                         inflight: Arc<DashSet<String>>,
                         client: reqwest::Client,
                         url: Url,
                         redis_storage: Arc<redis_storage::RedisStorage>,
-                        check_f: F) -> Result<impl Reply, Rejection>
+                        check_f: F) -> Result<Box<dyn warp::Reply>, Rejection>
     where F: FnOnce(Bytes, &RequestCert) -> Result<T, Rejection> + Send + 'static,
-          T: Send + Sync + redis::ToRedisArgs
+          T: Send + Sync + redis::ToRedisArgs + warp::Reply + 'static
 {
     if inflight.contains(url.as_str()) {
         info!("already processing {}", body.url);
@@ -91,7 +91,8 @@ fn handle_request<T, F>(body: RequestCert,
     else {
         info!("start processing {}; {} elements currently being processed",
                     &body.url, inflight.len());
-        tokio::spawn(async move {
+        let is_sync = body.sync.unwrap_or(false);
+        let fut = tokio::spawn(async move {
             inflight.insert(body.url.clone());
             let domain = &body.domain;
             let req = client.get(url).send();
@@ -111,13 +112,13 @@ fn handle_request<T, F>(body: RequestCert,
                     let res = check_f(o, &body).unwrap();
                     redis_storage.store_result(&body.redis_server,
                                                domain.as_str(),
-                                               res)
+                                               &res)
                         .await
                         .unwrap_or_else(|e| {
                             warn!("cannot store results for domain {} to redis: {:?}",
                                         domain.as_str(), e);
                         });
-                    Ok(())
+                    Ok(res)
                 }
                 Err(e) => {
                     info!("cannot get results from {}: {}", &body.url, e);
@@ -126,8 +127,17 @@ fn handle_request<T, F>(body: RequestCert,
                 }
             }
         });
-        // We do not await this future as the idea is to perform
-        // all those lookups asynchronously
-        Ok(StatusCode::OK)
+        if is_sync {
+            match fut.await.map_err(|e| AppError::JoinError(e))? {
+                Ok(res) => Ok(Box::new(warp::reply::with_status(res, StatusCode::OK))),
+                Err(e) => Err(warp::reject::custom(AppError::HTTPClientError(e)))
+            }
+
+        }
+        else {
+            // We do not await this future as the idea is to perform
+            // all those lookups asynchronously
+            Ok(Box::new(StatusCode::OK))
+        }
     }
 }
