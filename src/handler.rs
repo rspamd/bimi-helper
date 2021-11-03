@@ -12,6 +12,11 @@ use crate::data::*;
 use crate::{cert, mini_pki, redis_storage};
 use log::{info, warn};
 
+// The file size of SVG Tiny PS documents SHOULD be as small as
+// possible, and SHOULD NOT exceed 32 kilobytes.  That size should be
+// evaluated when the document is uncompressed.
+const MAX_SVG_SIZE : usize = 32 * 1024;
+
 pub async fn health_handler(inflight: Arc<DashSet<String>>) -> Result<impl Reply, Rejection> {
     Ok(warp::reply::json(&HealthReply{
         requests_inflight: inflight.len()
@@ -103,12 +108,13 @@ async fn handle_request<T, F>(body: RequestCert,
                 Err(e) => {
                     info!("cannot get send request to {}: {}", &body.url, e);
                     inflight.remove(&body.url);
-                    return Err(e);
+                    return Err(AppError::HTTPClientError(e));
                 }
             };
             match resp.await {
                 Ok(o) => {
                     inflight.remove(&body.url);
+                    check_svg_size(&o)?;
                     let res = check_f(o, &body).unwrap();
                     redis_storage.store_result(&body.redis_server,
                                                domain.as_str(),
@@ -123,14 +129,14 @@ async fn handle_request<T, F>(body: RequestCert,
                 Err(e) => {
                     info!("cannot get results from {}: {}", &body.url, e);
                     inflight.remove(&body.url);
-                    Err(e)
+                    Err(AppError::HTTPClientError(e))
                 }
             }
         });
         if is_sync {
             match fut.await.map_err(|e| AppError::JoinError(e))? {
                 Ok(res) => Ok(Box::new(warp::reply::with_status(res, StatusCode::OK))),
-                Err(e) => Err(warp::reject::custom(AppError::HTTPClientError(e)))
+                Err(e) => Err(warp::reject::custom(e))
             }
 
         }
@@ -139,5 +145,17 @@ async fn handle_request<T, F>(body: RequestCert,
             // all those lookups asynchronously
             Ok(Box::new(StatusCode::OK))
         }
+    }
+}
+
+// Checks SVG size according to IETF recommendation (should happen after decompression)
+fn check_svg_size(input : &Bytes) -> Result<(), AppError>
+{
+    let sz = input.len();
+    if (sz > MAX_SVG_SIZE) || sz < 8 {
+        Err(AppError::SVGSizeError(sz))
+    }
+    else {
+        Ok(())
     }
 }
