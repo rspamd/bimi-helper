@@ -1,4 +1,3 @@
-use bytes::Bytes;
 use memmem::{Searcher, TwoWaySearcher};
 use openssl::x509::{GeneralName, X509, X509NameRef};
 use openssl::stack::{Stack};
@@ -27,8 +26,8 @@ const BIMI_KEY_USAGE_OID : &'static str = "1.3.6.1.5.5.7.3.31";
 
 impl BIMICertificate {
     /// Create a certificate from PEM file (typical usage for BIMI)
-    pub fn from_pem(input : &Vec<u8>, ca_storage: &CAStorage) -> Result<Self, AppError> {
-        let mut x509_stack = X509::stack_from_pem(&input)
+    pub fn from_pem(input : &[u8], ca_storage: &CAStorage) -> Result<Self, AppError> {
+        let mut x509_stack = X509::stack_from_pem(input)
             .map_err(|e| AppError::CertificateParseError(e.to_string()))?;
 
 
@@ -215,10 +214,10 @@ lazy_static! {
 }
 
 /// Performs a cheap check for PEM file
-fn check_pem(input: &Bytes) -> bool
+fn check_pem(input: &[u8]) -> bool
 {
-    HEADER_SRCH.search_in(&input[..]).and_then(|s| {
-        FOOTER_SRCH.search_in(&input[..])
+    HEADER_SRCH.search_in(&input).and_then(|s| {
+        FOOTER_SRCH.search_in(&input)
             .and_then(|e| {
                 if s + 1 >= e - 1 {
                     None
@@ -231,16 +230,16 @@ fn check_pem(input: &Bytes) -> bool
 }
 
 
-pub fn process_cert(input: &Bytes, ca_storage: &CAStorage, domain: &str)
+pub fn process_cert(input: &[u8], ca_storage: &CAStorage, domain: &str)
     -> Result<Vec<u8>, AppError>
 {
-    if !check_pem(&input) {
+    if !check_pem(input) {
         return Err(AppError::BadPEM);
     }
 
     debug!("got likely valid pem for domain {}", domain);
 
-    let cert = BIMICertificate::from_pem(&input.to_vec(),
+    let cert = BIMICertificate::from_pem(input,
             ca_storage)?;
     debug!("got valid pem for domain {}", domain);
 
@@ -285,7 +284,6 @@ pub fn process_cert(input: &Bytes, ca_storage: &CAStorage, domain: &str)
 mod test {
     use crate::cert::{verify_dns, process_cert};
     use crate::mini_pki::CAStorage;
-    use bytes::Bytes;
 
     #[test]
     fn verify_names() {
@@ -327,8 +325,8 @@ mod test {
                      &good_ca_storage, "valimail.com").unwrap();
     }
 
-    fn read_bytes(fname : &str) -> Option<Bytes> {
+    fn read_bytes(fname : &str) -> Option<Vec<u8>> {
         let bytes_vec = std::fs::read(fname).unwrap();
-        Some(Bytes::from(bytes_vec))
+        Some(Vec::from(bytes_vec))
     }
 }

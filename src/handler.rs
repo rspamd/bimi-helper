@@ -5,17 +5,12 @@ use reqwest;
 use std::sync::Arc;
 use serde_json;
 use base64;
-use bytes::Bytes;
 
 use crate::error::{AppError};
 use crate::data::*;
+use crate::svg;
 use crate::{cert, mini_pki, redis_storage};
 use log::{info, warn};
-
-// The file size of SVG Tiny PS documents SHOULD be as small as
-// possible, and SHOULD NOT exceed 32 kilobytes.  That size should be
-// evaluated when the document is uncompressed.
-const MAX_SVG_SIZE : usize = 32 * 1024;
 
 pub async fn health_handler(inflight: Arc<DashSet<String>>) -> Result<impl Reply, Rejection> {
     Ok(warp::reply::json(&HealthReply{
@@ -35,7 +30,7 @@ pub async fn check_handler(body: RequestCert, inflight: Arc<DashSet<String>>,
                            move |o, req| {
                 let domain = &req.domain;
                 info!("got result from {}: length = {}", &req.url, o.len());
-                let result = match cert::process_cert(&o,
+                let result = match cert::process_cert(o,
                                                       ca_storage.as_ref(),
                                                       &domain) {
                     Err(e) => {
@@ -46,7 +41,8 @@ pub async fn check_handler(body: RequestCert, inflight: Arc<DashSet<String>>,
                     }
                     Ok(svg_bytes) => {
                         info!("processed certificate for {}", domain);
-                        let encoded = base64::encode(svg_bytes);
+                        let svg = svg::process_svg(&svg_bytes[..])?;
+                        let encoded = base64::encode(&svg[..]);
                         serde_json::to_string(&SvgResult{
                             content: encoded.as_str()
                         }).unwrap()
@@ -71,7 +67,11 @@ pub async fn svg_handler(body: RequestCert, inflight: Arc<DashSet<String>>,
             handle_request(body, inflight, client, url, redis_storage,
                            move |o, req| {
                 info!("got SVG result from {}: length = {}", &req.url, o.len());
-                Ok(o.to_vec())
+                let svg = svg::process_svg(o)?;
+               let encoded = base64::encode(svg);
+               Ok(serde_json::to_string(&SvgResult{
+                   content: encoded.as_str()
+               }).unwrap())
             }).await
         }
         Err(e) => {
@@ -86,7 +86,7 @@ async fn handle_request<T, F>(body: RequestCert,
                         url: Url,
                         redis_storage: Arc<redis_storage::RedisStorage>,
                         check_f: F) -> Result<Box<dyn warp::Reply>, Rejection>
-    where F: FnOnce(Bytes, &RequestCert) -> Result<T, Rejection> + Send + 'static,
+    where F: FnOnce(&[u8], &RequestCert) -> Result<T, AppError> + Send + 'static,
           T: Send + Sync + redis::ToRedisArgs + warp::Reply + 'static
 {
     if inflight.contains(url.as_str()) {
@@ -114,8 +114,7 @@ async fn handle_request<T, F>(body: RequestCert,
             match resp.await {
                 Ok(o) => {
                     inflight.remove(&body.url);
-                    check_svg_size(&o)?;
-                    let res = check_f(o, &body).unwrap();
+                    let res = check_f(&o.to_vec(), &body)?;
                     redis_storage.store_result(&body.redis_server,
                                                domain.as_str(),
                                                &res)
@@ -145,17 +144,5 @@ async fn handle_request<T, F>(body: RequestCert,
             // all those lookups asynchronously
             Ok(Box::new(StatusCode::OK))
         }
-    }
-}
-
-// Checks SVG size according to IETF recommendation (should happen after decompression)
-fn check_svg_size(input : &Bytes) -> Result<(), AppError>
-{
-    let sz = input.len();
-    if (sz > MAX_SVG_SIZE) || sz < 8 {
-        Err(AppError::SVGSizeError(sz))
-    }
-    else {
-        Ok(())
     }
 }

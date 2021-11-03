@@ -27,6 +27,7 @@ mod cert;
 mod mini_pki;
 mod x509_helpers;
 mod redis_storage;
+mod svg;
 
 use redis_storage::RedisStorage;
 use crate::error::AppError;

@@ -38,6 +38,7 @@ foreign-types = "0.3"
 libc = "0.2"
 hex = "0.4"
 data-url = "0.1"
+flate2 = "1.0"
 
 [target."cfg(unix)".dependencies]
 privdrop = { version = "0.5", optional = true }
