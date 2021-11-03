@@ -50,20 +50,23 @@ pub enum AppError {
     #[error("Future handling error")]
     JoinError(#[from] JoinError),
     #[error("HTTP client error")]
-    HTTPClientError(#[from] reqwest::Error)
+    HTTPClientError(#[from] reqwest::Error),
+    #[error("Invalid SVG size")]
+    SVGSizeError(usize)
 }
 
 impl warp::reject::Reject for AppError {}
 
 #[derive(Serialize)]
 struct ErrorResponse {
-    pub message: String,
+    pub error: String,
 }
 
 
 pub async fn handle_rejection(err: Rejection) -> std::result::Result<impl Reply, Infallible> {
     let code;
     let message;
+    let message_str : String;
 
     if err.is_not_found() {
         code = StatusCode::NOT_FOUND;
@@ -85,7 +88,8 @@ pub async fn handle_rejection(err: Rejection) -> std::result::Result<impl Reply,
             _ => {
                 warn!("unhandled application error: {:?}", err);
                 code = StatusCode::INTERNAL_SERVER_ERROR;
-                message = "Internal Server Error";
+                message_str = e.to_string();
+                message = message_str.as_str();
             }
         }
     } else if let Some(_) = err.find::<warp::reject::MethodNotAllowed>() {
@@ -98,7 +102,7 @@ pub async fn handle_rejection(err: Rejection) -> std::result::Result<impl Reply,
     }
 
     let json = warp::reply::json(&ErrorResponse {
-        message: message.into(),
+        error: message.into(),
     });
 
     Ok(warp::reply::with_status(json, code))
