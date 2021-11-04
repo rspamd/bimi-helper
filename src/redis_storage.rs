@@ -4,6 +4,7 @@ use self::redis::{AsyncCommands};
 use tokio::time::timeout;
 use std::time::Duration;
 use crate::error::{AppError};
+use crate::data::RequestSVG;
 
 #[derive(Debug, StructOpt, Clone)]
 pub struct RedisStorageConfig {
@@ -28,22 +29,22 @@ impl RedisStorage {
         }
     }
 
-    pub async fn store_result<T>(&self, server : &str, key : &str, data : T)
+    pub async fn store_result<T>(&self, req: &RequestSVG, key : &str, data : T)
         -> Result<(), AppError>
     where T: redis::ToRedisArgs + Send + Sync
     {
-        let client = redis::Client::open(server)?;
+        let client = redis::Client::open(req.redis_server.as_deref().unwrap())?;
         let mut conn = client.get_async_connection().await?;
-        let expiry = (self.config.expiry * 1000.0) as usize;
+        let expiry = req.redis_expiry
+            .unwrap_or((self.config.expiry * 1000.0) as usize);
 
-        let real_key = match &self.config.prefix {
-            Some(prefix) => {
-                String::from(prefix) + key
-            }
-            None => {
-                key.to_string()
-            }
-        };
+        let prefix = req.redis_prefix
+            .as_deref()
+            .unwrap_or_else(|| {
+                self.config.prefix.as_deref()
+                    .unwrap_or("")
+            });
+        let real_key = prefix.to_string() + key;
 
         let cmd_fut = async {
             conn.pset_ex(real_key, data, expiry).await?;

@@ -18,7 +18,7 @@ pub async fn health_handler(inflight: Arc<DashSet<String>>) -> Result<impl Reply
     }))
 }
 
-pub async fn check_handler(body: RequestCert, inflight: Arc<DashSet<String>>,
+pub async fn check_handler(body: RequestSVG, inflight: Arc<DashSet<String>>,
                            client: reqwest::Client,
                            ca_storage: Arc<mini_pki::CAStorage>,
                            redis_storage: Arc<redis_storage::RedisStorage>)
@@ -57,10 +57,10 @@ pub async fn check_handler(body: RequestCert, inflight: Arc<DashSet<String>>,
     }
 }
 
-pub async fn svg_handler(body: RequestCert, inflight: Arc<DashSet<String>>,
-                           client: reqwest::Client,
-                           redis_storage: Arc<redis_storage::RedisStorage>)
-                           -> Result<Box<dyn warp::Reply>, Rejection>
+pub async fn svg_handler(body: RequestSVG, inflight: Arc<DashSet<String>>,
+                         client: reqwest::Client,
+                         redis_storage: Arc<redis_storage::RedisStorage>)
+                         -> Result<Box<dyn warp::Reply>, Rejection>
 {
     match reqwest::Url::parse(body.url.as_str()) {
         Ok(url) => {
@@ -80,13 +80,13 @@ pub async fn svg_handler(body: RequestCert, inflight: Arc<DashSet<String>>,
     }
 }
 
-async fn handle_request<T, F>(body: RequestCert,
-                        inflight: Arc<DashSet<String>>,
-                        client: reqwest::Client,
-                        url: Url,
-                        redis_storage: Arc<redis_storage::RedisStorage>,
-                        check_f: F) -> Result<Box<dyn warp::Reply>, Rejection>
-    where F: FnOnce(&[u8], &RequestCert) -> Result<T, AppError> + Send + 'static,
+async fn handle_request<T, F>(body: RequestSVG,
+                              inflight: Arc<DashSet<String>>,
+                              client: reqwest::Client,
+                              url: Url,
+                              redis_storage: Arc<redis_storage::RedisStorage>,
+                              check_f: F) -> Result<Box<dyn warp::Reply>, Rejection>
+    where F: FnOnce(&[u8], &RequestSVG) -> Result<T, AppError> + Send + 'static,
           T: Send + Sync + redis::ToRedisArgs + warp::Reply + 'static
 {
     if inflight.contains(url.as_str()) {
@@ -115,14 +115,17 @@ async fn handle_request<T, F>(body: RequestCert,
                 Ok(o) => {
                     inflight.remove(&body.url);
                     let res = check_f(&o.to_vec(), &body)?;
-                    redis_storage.store_result(&body.redis_server,
-                                               domain.as_str(),
-                                               &res)
-                        .await
-                        .unwrap_or_else(|e| {
-                            warn!("cannot store results for domain {} to redis: {:?}",
+
+                    if !body.skip_redis.unwrap_or(false) {
+                        redis_storage.store_result(&body,
+                                                   domain.as_str(),
+                                                   &res)
+                            .await
+                            .unwrap_or_else(|e| {
+                                warn!("cannot store results for domain {} to redis: {:?}",
                                         domain.as_str(), e);
-                        });
+                            });
+                    }
                     Ok(res)
                 }
                 Err(e) => {
