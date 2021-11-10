@@ -69,6 +69,9 @@ struct Config {
     /// Trusted fingerprints file
     #[structopt(long = "fingerprints-file")]
     fingerprints_file: Option<String>,
+    /// Trusted SSL root in PEM format
+    #[structopt(long = "ssl-ca-file")]
+    ssl_ca_file: Option<Vec<String>>,
     #[structopt(flatten)]
     redis_conf : redis_storage::RedisStorageConfig,
 }
@@ -184,6 +187,11 @@ fn main()  -> Result<(), AppError> {
                     ca_storage.as_ref().add_fingerprint(fp.trim())?;
                 }
             }
+        }
+    }
+    if let Some(ref fnames) = opts.ssl_ca_file {
+        for fname in fnames {
+            ca_storage.as_ref().add_ca_pem(fname)?;
         }
     }
 

@@ -1,4 +1,5 @@
 use std::ops::{DerefMut};
+use std::fs;
 use openssl::x509::store::{X509StoreBuilder, X509Store};
 use crate::error::{AppError};
 use dashmap::DashMap;
@@ -10,18 +11,7 @@ use openssl::stack::Stack;
 use hex;
 use foreign_types::{ForeignTypeRef};
 use log::{debug, info};
-
-// Not exported by rust-openssl aside of Builder stuff
-fn add_cert_to_store(store: &mut X509Store, cert: &X509) -> Result<(), AppError>
-{
-    unsafe {
-        match openssl_ffi::X509_STORE_add_cert(store.as_ref().as_ptr(),
-                                         cert.as_ref().as_ptr()) {
-            1 => Ok(()),
-            _ => Err(AppError::OpenSSLError(ErrorStack::get()))
-        }
-    }
-}
+use crate::x509_helpers::x509_is_ca;
 
 /// CA storage that can be shared among threads and dynamically updated
 pub struct CAStorage {
@@ -59,13 +49,34 @@ impl CAStorage {
         Ok(())
     }
 
+    pub fn add_ca_pem(&self, fname: &str) -> Result<(), AppError> {
+        let pem = fs::read(fname)?;
+        let mut x509_stack = X509::stack_from_pem(&pem[..])
+            .map_err(|e| AppError::CertificateParseError(e.to_string()))?;
+
+        while let Some(cert) = x509_stack.pop() {
+            let cert_digest_hex = cert_hex_digest(&cert)?;
+
+            if x509_is_ca(&cert) {
+                info!("added trusted CA root {}", &cert_digest_hex);
+                self.trusted_fingerprints.insert(cert_digest_hex, false);
+                self.try_add_ca_cert(&cert)?;
+            }
+            else {
+                let err_message = String::from("Not CA cert found: ") +
+                    cert_digest_hex.as_str();
+                return Err(AppError::CertificateParseError(err_message));
+            }
+        }
+
+        Ok(())
+    }
+
     /// Adds a new CA certificate to the storage
     /// Certificate must match trusted fingerprints database
     /// If a certificate has been already added, this function is no-op
     pub fn try_add_ca_cert(&self, cert: &X509) -> Result<(), AppError> {
-        let cert_digest = cert.digest(MessageDigest::sha256())
-            .map_err(|_| AppError::CertificateParseError("no digest in CA cert".to_string()))?;
-        let cert_digest_hex = hex::encode(cert_digest);
+        let cert_digest_hex = cert_hex_digest(cert)?;
 
         let mut fp_count = self.trusted_fingerprints
             .get_mut(cert_digest_hex.as_str())
@@ -109,5 +120,23 @@ impl CAStorage {
         }
 
         Ok(())
+    }
+}
+
+fn cert_hex_digest(cert: &X509) -> Result<String, AppError>  {
+    let cert_digest = cert.digest(MessageDigest::sha256())
+        .map_err(|_| AppError::CertificateParseError("no digest in CA cert".to_string()))?;
+    Ok(hex::encode(cert_digest))
+}
+
+// Not exported by rust-openssl aside of Builder stuff
+fn add_cert_to_store(store: &mut X509Store, cert: &X509) -> Result<(), AppError>
+{
+    unsafe {
+        match openssl_ffi::X509_STORE_add_cert(store.as_ref().as_ptr(),
+                                               cert.as_ref().as_ptr()) {
+            1 => Ok(()),
+            _ => Err(AppError::OpenSSLError(ErrorStack::get()))
+        }
     }
 }
