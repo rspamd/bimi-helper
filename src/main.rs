@@ -195,11 +195,11 @@ fn main()  -> Result<(), AppError> {
         .build()
         .unwrap()
         .block_on(async move {
-            let health_route = warp::path!("health")
+            let health_route = warp::path!("v1" / "health")
                 .and(with_dash_set(domains_inflight.clone()))
                 .and_then(handler::health_handler);
             // Path to verify VMC
-            let check_route = warp::path!("check")
+            let check_route = warp::path!("v1" / "check")
                 .and(warp::post())
                 .and(warp::body::json())
                 .and(with_dash_set(domains_inflight.clone()))
@@ -208,7 +208,7 @@ fn main()  -> Result<(), AppError> {
                 .and(with_redis_storage(redis_storage.clone()))
                 .and_then(handler::check_handler);
             // Path to download SVG only
-            let svg_route = warp::path!("svg")
+            let svg_route = warp::path!("v1" / "svg")
                 .and(warp::post())
                 .and(warp::body::json())
                 .and(with_dash_set(domains_inflight.clone()))

@@ -23,19 +23,20 @@ FLAGS:
     -v, --verbose    Verbose level (repeat for more verbosity)
 
 OPTIONS:
-        --cert <cert>                      X509 certificate for HTTP server
-        --chroot <chroot>                  Chroot to this directory
-        --redis-expiry <expiry>             [default: 259200]
-    -F, --fingerprint <fingerprints>...    Trusted fingerprint
-    -g, --group <group>                    Run as this group
-    -t, --timeout <http-timeout>           HTTP client timeout [default: 5.0]
-    -U, --user-agent <http-ua>             HTTP user agent [default: BIMI-Agent/0.1]
-    -l, --listen <listen-addr>             Listen address to bind to [default: 0.0.0.0:3030]
-    -n, --max-threads <max-threads>        Number of threads to start [default: 2]
-        --redis-prefix <prefix>            Prefix for Redis keys (if not specified in a request)
-        --privkey <privkey>                Private key for SSL HTTP server
-        --redis-timeout <timeout>          Redis operations timeout [default: 5.0]
-    -u, --user <user>                      Run as this user and their primary group
+        --cert <cert>                              X509 certificate for HTTP server
+        --chroot <chroot>                          Chroot to this directory
+        --redis-expiry <expiry>                     [default: 259200]
+    -F, --fingerprint <fingerprints>...            Trusted fingerprint
+        --fingerprints-file <fingerprints-file>    Trusted fingerprints file
+    -g, --group <group>                            Run as this group
+    -t, --timeout <http-timeout>                   HTTP client timeout [default: 5.0]
+    -U, --user-agent <http-ua>                     HTTP user agent [default: BIMI-Agent/0.1]
+    -l, --listen <listen-addr>                     Listen address to bind to [default: 0.0.0.0:3030]
+    -n, --max-threads <max-threads>                Number of threads to start [default: 2]
+        --redis-prefix <prefix>                    Prefix for Redis keys (if not specified in a request)
+        --privkey <privkey>                        Private key for SSL HTTP server
+        --redis-timeout <timeout>                  Redis operations timeout [default: 5.0]
+    -u, --user <user>                              Run as this user and their primary group
 ```
 
 This will open an HTTP server available for requests.
@@ -54,7 +55,13 @@ a CA certificate it tries to verify it's SHA256 digest against a set of trusted
 fingerprints.
 
 For the example above, you might want to add DigiCert Verified Mark Root CA fingerprint
-to be able to validate pem from `valimail`. The sha256 of this cert is `504386c9ee8932fecc95fade427f69c3e2534b7310489e300fee448e33c46b42`.
+to be able to validate pem from `valimail`. 
+
+## Valid VMC roots fingerprints
+
+So far, there are two valid VMC roots:
+* Digicert VMC CA: `504386c9ee8932fecc95fade427f69c3e2534b7310489e300fee448e33c46b42`
+* Entrust VMC (is not included in chains...)
 
 ## TODO list
 
@@ -63,11 +70,11 @@ to be able to validate pem from `valimail`. The sha256 of this cert is `504386c9
 - [x] Add oids specific for BIMI Extended Key Usage
 - [x] Implement a simple extractor for LOGOTYPE images asn.1 structure
 - [x] Implement storage for BIMI images in Redis
-- [ ] Write tests
+- [x] Write tests
 - [x] Implement reading from a file with trusted fingerprints
 - [ ] Add systemd units and other helping stuff
-- [ ] Add integration to Rspamd
-- [ ] Work with plain SVG images from `l=` anchor in BIMI records
+- [x] Add integration to Rspamd
+- [x] Work with plain SVG images from `l=` anchor in BIMI records
 - [ ] Validate SVG images
 - [ ] Work with remote images (e.g. with no `data:` URLs)
 - [ ] Refactor ugly code

@@ -6,7 +6,7 @@ use chrono::{DateTime, Utc};
 use std::time::SystemTime;
 use std::net::{IpAddr};
 use std::str;
-use log::{debug};
+use log::{debug, info};
 use data_url::DataUrl;
 
 use crate::error::{AppError};
@@ -60,7 +60,10 @@ impl BIMICertificate {
             else {
                 // Either add trusted CA or add some intermediate CA to the chain
                 ca_storage.try_add_ca_cert(&cert)
-                    .unwrap_or_else(|_| chain_stack.push(cert).unwrap())
+                    .unwrap_or_else(|e| {
+                        info!("cannot add CA certificate in chain: {:?}", e);
+                        chain_stack.push(cert).unwrap()
+                    })
             }
         }
 
