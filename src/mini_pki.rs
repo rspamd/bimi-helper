@@ -49,6 +49,8 @@ impl CAStorage {
         Ok(())
     }
 
+    /// Adds CA certificates from a PEM file
+    /// All certificates in this file must be CA certificates
     pub fn add_ca_pem(&self, fname: &str) -> Result<(), AppError> {
         let pem = fs::read(fname)?;
         let mut x509_stack = X509::stack_from_pem(&pem[..])
@@ -58,7 +60,6 @@ impl CAStorage {
             let cert_digest_hex = cert_hex_digest(&cert)?;
 
             if x509_is_ca(&cert) {
-                info!("added trusted CA root {}", &cert_digest_hex);
                 self.trusted_fingerprints.insert(cert_digest_hex, false);
                 self.try_add_ca_cert(&cert)?;
             }
@@ -84,7 +85,7 @@ impl CAStorage {
 
         if *fp_count {
             // Already added
-            debug!("already seen certificate with fp {}", &cert_digest_hex);
+            debug!("already seen certificate with SHA256: {}", &cert_digest_hex);
             return Ok(());
         }
 
@@ -96,6 +97,9 @@ impl CAStorage {
         add_cert_to_store(ca_store.deref_mut(), cert)
     }
 
+    /// Verifies a certificate using the system and the local trusted CA storage
+    /// This function requires a target certificate and all intermediate certificates
+    /// in OpenSSL chain
     pub fn verify_cert(&self, cert: &X509, chain: &Stack<X509>) -> Result<(), AppError> {
         let mut nstore_ctx = X509StoreContext::new().
             map_err(|e| AppError::CAInitError(e.to_string()))?;
