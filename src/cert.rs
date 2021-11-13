@@ -8,6 +8,15 @@ use std::net::{IpAddr};
 use std::str;
 use log::{debug, info};
 use data_url::DataUrl;
+use der_parser::der::{parse_der_ia5string,
+                      parse_der_sequence_of,
+                      parse_der_sequence_defined_g,
+                      der_read_element_header,
+                      parse_der_octetstring,
+                      parse_der_oid,
+                      parse_der_null};
+use der_parser::error::{BerError, BerResult};
+use nom::combinator::{verify};
 
 use crate::error::{AppError};
 use crate::mini_pki::CAStorage;
@@ -266,12 +275,11 @@ pub fn process_cert(input: &[u8], ca_storage: &CAStorage, domain: &str)
     let image_vec = x509_bimi_get_ext(&cert.certificate)
         .ok_or(AppError::CertificateNoLogoTypeExt)?;
 
-    if image_vec.starts_with("data:".as_bytes()) {
-        debug!("got data url for {}", domain);
-        let image_str = str::from_utf8(&image_vec)
-            .or_else(|_| Err(AppError::CertificateInvalidLogoURL))?;
-        debug!("got data url for {}", image_str);
-        let image_url = DataUrl::process(image_str)
+    let image_url = parse_logotype_ext(&image_vec[..])?;
+
+    if image_url.starts_with("data:") {
+        debug!("got data url for {}", image_url);
+        let image_url = DataUrl::process(image_url)
             .map_err(|_| AppError::CertificateInvalidLogoURL)?;
         let image_data = image_url
             .decode_to_vec()
@@ -281,6 +289,94 @@ pub fn process_cert(input: &[u8], ca_storage: &CAStorage, domain: &str)
     else {
         Ok(image_vec)
     }
+}
+
+// LogotypeExtn ::= SEQUENCE {
+//    communityLogos  [0] EXPLICIT SEQUENCE OF LogotypeInfo OPTIONAL,
+//    issuerLogo      [1] EXPLICIT LogotypeInfo OPTIONAL,
+//    subjectLogo     [2] EXPLICIT LogotypeInfo OPTIONAL,
+//    otherLogos      [3] EXPLICIT SEQUENCE OF OtherLogotypeInfo OPTIONAL }
+fn parse_logotype_ext(input: &[u8]) -> Result<&str, AppError> {
+    let (_, urls) = parse_der_sequence_defined_g(|i:&[u8], _| {
+        let (rest, hdr) = verify(der_read_element_header,
+                                 |hdr| hdr.is_contextspecific())(i)?;
+        match hdr.tag.0 {
+            2 => parse_logotype_info_seq(rest),
+            _ => {
+                info!("unexpected tag: {}", hdr.tag.0);
+                Err(nom::Err::Error(BerError::UnknownTag))
+            }
+        }
+    })(input)?;
+    let first_url = &urls.as_sequence()?[0]
+        .as_sequence()?[0]
+        .as_sequence()?[0];
+    first_url.as_str().map_err(|e| AppError::BERError(e))
+}
+
+// Parses a sequence of logotype info asn.1 objects
+//
+// LogotypeInfo ::= CHOICE {
+// direct          [0] LogotypeData,
+// indirect        [1] LogotypeReference }
+fn parse_logotype_info_seq(input: &[u8]) -> BerResult {
+    let (rest, hdr) = verify(der_read_element_header,
+                             |hdr| hdr.is_contextspecific())(input)?;
+    match hdr.tag.0 {
+        0 => {
+            parse_der_sequence_of(parse_logotype_data)(rest)
+        },
+        _ => {
+            info!("cannot match tag: {}", hdr.tag.0);
+            Err(nom::Err::Error(BerError::UnknownTag))
+        }
+    }
+}
+
+// Parse LogoTypeData
+// LogotypeData ::= SEQUENCE {
+// image           SEQUENCE OF LogotypeImage OPTIONAL,
+// audio           [1] SEQUENCE OF LogotypeAudio OPTIONAL }
+fn parse_logotype_data(input: &[u8]) -> BerResult {
+    parse_der_sequence_defined_g(|i: &[u8], _| {
+        parse_der_sequence_of(parse_logotype_image_details)(i)
+    })(input)
+}
+
+
+// LogotypeDetails ::= SEQUENCE {
+//    mediaType       IA5String,
+//    logotypeHash    SEQUENCE OF HashAlgAndValue,
+//    logotypeURI     SEQUENCE OF IA5String }
+fn parse_logotype_image_details(i: &[u8]) -> BerResult {
+    let (i, _) = parse_der_ia5string(i)?; // Content-Type
+    let (i, _) = parse_der_sequence_of(parse_logotype_hash_and_value)(i)?;
+    let (i, urls) = parse_der_sequence_of(|i| {
+        parse_der_ia5string(i)
+    })(i)?;
+    Ok((i, urls))
+}
+// HashAlgAndValue ::= SEQUENCE {
+//    hashAlg         AlgorithmIdentifier,
+//    hashValue       OCTET STRING }
+//
+fn parse_logotype_hash_and_value(i: &[u8]) -> BerResult {
+    parse_der_sequence_defined_g(|i: &[u8], _| {
+        let (i, id) = parse_der_sequence_defined_g(|i, _| parse_algorithm_identifier(i))(i)?;
+        debug!("got hash oid: {:?}", id.as_oid()?);
+        parse_der_octetstring(i)
+    })(i)
+}
+
+//    AlgorithmIdentifier  ::=  SEQUENCE  {
+//         algorithm               OBJECT IDENTIFIER,
+//         parameters              ANY DEFINED BY algorithm OPTIONAL  }
+fn parse_algorithm_identifier(i: &[u8]) -> BerResult {
+    // Algorithm identifier parser
+    let (i, oid) = parse_der_oid(i)?;
+    // We assume that parameters are always NULL
+    let (i, _) = parse_der_null(i)?;
+    Ok((i, oid))
 }
 
 #[cfg(test)]

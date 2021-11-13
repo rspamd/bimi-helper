@@ -68,7 +68,7 @@ So far, there are two valid VMC roots:
 - [x] Implement the basic prototype
 - [x] Add x509 extraction and checks
 - [x] Add oids specific for BIMI Extended Key Usage
-- [x] Implement a simple extractor for LOGOTYPE images asn.1 structure
+- [x] Implement ASN.1 parser for the LOGOTYPE extension
 - [x] Implement storage for BIMI images in Redis
 - [x] Write tests
 - [x] Implement reading from a file with trusted fingerprints

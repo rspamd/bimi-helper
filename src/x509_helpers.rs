@@ -2,7 +2,6 @@ use openssl::stack::{Stack, Stackable};
 use openssl::asn1::{Asn1TimeRef};
 use openssl::x509::{X509};
 use chrono::{NaiveDateTime, DateTime, Utc};
-use memmem::{Searcher, TwoWaySearcher};
 use std::ffi::CString;
 use libc::{c_int};
 use std::slice;
@@ -99,12 +98,6 @@ pub fn x509_is_ca(cert: &X509) -> bool {
     }
 }
 
-
-lazy_static! {
-    static ref SVG_SEARCHER : TwoWaySearcher<'static> =
-        TwoWaySearcher::new(b"data:image/svg+xml");
-}
-
 const BIMI_IMAGE_OID : &'static str = "1.3.6.1.5.5.7.1.12";
 
 /// Get BIMI extension by finding a logotype OID and do a (very) naive
@@ -167,9 +160,7 @@ pub fn x509_bimi_get_ext(cert: &X509) -> Option<Vec<u8>>
 
         let len = openssl_ffi::ASN1_STRING_length(obj_data as *mut _);
         let slice = slice::from_raw_parts(ptr as *const u8, len as usize);
-        let svg_pos = SVG_SEARCHER.search_in(slice)?;
-        let svg_slice = slice.get(svg_pos..slice.len())?;
 
-        Some(svg_slice.to_vec())
+        Some(slice.to_vec())
     }
 }

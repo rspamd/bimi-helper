@@ -52,7 +52,11 @@ pub enum AppError {
     #[error("HTTP client error")]
     HTTPClientError(#[from] reqwest::Error),
     #[error("Invalid SVG size")]
-    SVGSizeError(usize)
+    SVGSizeError(usize),
+    #[error("ASN.1 parse error")]
+    ASN1Error(#[from] nom::Err<der_parser::error::BerError>),
+    #[error("BER type error")]
+    BERError(#[from] der_parser::error::BerError),
 }
 
 impl warp::reject::Reject for AppError {}
