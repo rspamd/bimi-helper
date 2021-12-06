@@ -1,4 +1,4 @@
-use serde_derive::{Serialize, Deserialize};
+use serde_derive::{Deserialize, Serialize};
 
 #[derive(Deserialize, Clone, PartialEq, Debug)]
 pub struct RequestSVG {
@@ -15,7 +15,7 @@ pub struct RequestSVG {
     /// Custom redis prefix for this request
     pub redis_prefix: Option<String>,
     /// Skip Redis completely
-    pub skip_redis: Option<bool>
+    pub skip_redis: Option<bool>,
 }
 
 #[derive(Serialize, Clone, PartialEq, Debug)]
@@ -35,4 +35,3 @@ pub struct RetreiveError<'a> {
     /// Error to store
     pub error: &'a str,
 }
-

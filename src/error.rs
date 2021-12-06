@@ -1,12 +1,12 @@
-use thiserror::Error;
-use warp::{http::StatusCode, Reply, Rejection};
-use std::convert::Infallible;
-use serde_derive::{Serialize};
-use log::{warn, info};
+use log::{info, warn};
 use openssl::error::ErrorStack;
 use redis::RedisError;
+use serde_derive::Serialize;
+use std::convert::Infallible;
+use thiserror::Error;
 use tokio::task::JoinError;
 use tokio::time::error::Elapsed;
+use warp::{http::StatusCode, Rejection, Reply};
 
 #[derive(Error, Debug)]
 pub enum AppError {
@@ -65,16 +65,18 @@ struct ErrorResponse {
     pub error: String,
 }
 
-
 pub async fn handle_rejection(err: Rejection) -> std::result::Result<impl Reply, Infallible> {
     let code;
     let message;
-    let message_str : String;
+    let message_str: String;
 
     if err.is_not_found() {
         code = StatusCode::NOT_FOUND;
         message = "Not Found";
-    } else if err.find::<warp::filters::body::BodyDeserializeError>().is_some() {
+    } else if err
+        .find::<warp::filters::body::BodyDeserializeError>()
+        .is_some()
+    {
         code = StatusCode::BAD_REQUEST;
         message = "Invalid Body";
     } else if let Some(e) = err.find::<AppError>() {
@@ -82,12 +84,12 @@ pub async fn handle_rejection(err: Rejection) -> std::result::Result<impl Reply,
             AppError::AlreadyProcessing => {
                 code = StatusCode::NOT_MODIFIED;
                 message = "Already processing";
-            },
+            }
             AppError::BadURL(e) => {
                 info!("bad url requested: {}", e);
                 code = StatusCode::BAD_REQUEST;
                 message = "Invalid URL";
-            },
+            }
             _ => {
                 warn!("unhandled application error: {:?}", err);
                 code = StatusCode::INTERNAL_SERVER_ERROR;

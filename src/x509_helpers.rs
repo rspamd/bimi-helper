@@ -1,15 +1,15 @@
+use chrono::{DateTime, NaiveDateTime, Utc};
+use foreign_types::ForeignType;
+use libc::c_int;
+use openssl::asn1::Asn1TimeRef;
 use openssl::stack::{Stack, Stackable};
-use openssl::asn1::{Asn1TimeRef};
-use openssl::x509::{X509};
-use chrono::{NaiveDateTime, DateTime, Utc};
+use openssl::x509::X509;
 use std::ffi::CString;
-use libc::{c_int};
-use std::slice;
 use std::fmt;
 use std::ptr;
-use foreign_types::{ForeignType};
+use std::slice;
 
-use crate::error::{AppError};
+use crate::error::AppError;
 
 /// Missing function to parse ASN.1 time to normal time
 pub fn parse_openssl_time(time: &Asn1TimeRef) -> Result<DateTime<Utc>, AppError> {
@@ -29,7 +29,7 @@ foreign_type! {
 impl ExtendedKeyUsage {
     pub fn text(&self) -> Option<String> {
         unsafe {
-            let mut buf  :[u8; 80] = [0; 80];
+            let mut buf: [u8; 80] = [0; 80];
             let len = openssl_ffi::OBJ_obj2txt(
                 buf.as_mut_ptr() as *mut _,
                 buf.len() as c_int,
@@ -38,7 +38,7 @@ impl ExtendedKeyUsage {
             );
             match std::str::from_utf8(&buf[..len as usize]) {
                 Err(_) => None,
-                Ok(s) => Some(String::from(s))
+                Ok(s) => Some(String::from(s)),
             }
         }
     }
@@ -87,21 +87,18 @@ pub fn get_x509_extended_key_usage(cert: &X509) -> Option<Stack<ExtendedKeyUsage
 /// Returns true if certificate has CA usage flag
 pub fn x509_is_ca(cert: &X509) -> bool {
     unsafe {
-        let flags = openssl_ffi::X509_get_extension_flags(
-            cert.as_ref() as *const _ as *mut _,);
+        let flags = openssl_ffi::X509_get_extension_flags(cert.as_ref() as *const _ as *mut _);
         flags & openssl_ffi::EXFLAG_CA != 0
     }
 }
 
-const BIMI_IMAGE_OID : &str = "1.3.6.1.5.5.7.1.12";
+const BIMI_IMAGE_OID: &str = "1.3.6.1.5.5.7.1.12";
 
 /// Get BIMI extension by finding a logotype OID and do a (very) naive
 /// parsing of it's structure
-pub fn x509_bimi_get_ext(cert: &X509) -> Option<Vec<u8>>
-{
+pub fn x509_bimi_get_ext(cert: &X509) -> Option<Vec<u8>> {
     unsafe {
-        let c_str_oid = CString::new(BIMI_IMAGE_OID)
-            .expect("must be able to construct C string");
+        let c_str_oid = CString::new(BIMI_IMAGE_OID).expect("must be able to construct C string");
         let obj_id = openssl_ffi::OBJ_txt2obj(c_str_oid.as_ptr(), 1);
 
         if obj_id.is_null() {

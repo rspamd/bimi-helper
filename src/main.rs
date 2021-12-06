@@ -4,38 +4,41 @@ extern crate openssl_sys as openssl_ffi;
 #[macro_use]
 extern crate foreign_types;
 
+use log::info;
 use log::LevelFilter;
-use log::{info};
 
-use std::net::SocketAddr;
-use structopt::StructOpt;
-use warp::{Filter};
-use std::fs;
 use dashmap::DashSet;
-use std::sync::Arc;
 use std::convert::Infallible;
-use std::time::Duration;
+use std::fs;
 use std::fs::File;
 use std::io::{self, BufRead};
-use std::path::{PathBuf, Path};
+use std::net::SocketAddr;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::time::Duration;
+use structopt::StructOpt;
+use warp::Filter;
 
-mod handler;
-mod error;
-mod data;
 mod cert;
+mod data;
+mod error;
+mod handler;
 mod mini_pki;
-mod x509_helpers;
 mod redis_storage;
 mod svg;
+mod x509_helpers;
 
-use redis_storage::RedisStorage;
 use crate::error::AppError;
+use redis_storage::RedisStorage;
 
 #[cfg(all(unix, feature = "drop_privs"))]
 use privdrop::PrivDrop;
 
 #[derive(Debug, StructOpt)]
-#[structopt(name = "bimi-agent", about = "BIMI agent to assist images verification end extraction")]
+#[structopt(
+    name = "bimi-agent",
+    about = "BIMI agent to assist images verification end extraction"
+)]
 struct Config {
     /// Listen address to bind to
     #[structopt(short = "l", long = "listen", default_value = "0.0.0.0:3030")]
@@ -72,7 +75,7 @@ struct Config {
     #[structopt(long = "ssl-ca-file")]
     ssl_ca_file: Option<Vec<String>>,
     #[structopt(flatten)]
-    redis_conf : redis_storage::RedisStorageConfig,
+    redis_conf: redis_storage::RedisStorageConfig,
 }
 
 #[cfg(all(unix, feature = "drop_privs"))]
@@ -91,12 +94,9 @@ struct PrivDropConfig {
 
 fn drop_privs(privdrop: &PrivDropConfig) {
     #[cfg(all(unix, feature = "drop_privs"))]
-    let privdrop_enabled = [
-            &privdrop.chroot,
-            &privdrop.user,
-            &privdrop.group]
-            .iter()
-            .any(|o| o.is_some());
+    let privdrop_enabled = [&privdrop.chroot, &privdrop.user, &privdrop.group]
+        .iter()
+        .any(|o| o.is_some());
     if privdrop_enabled {
         let mut pd = PrivDrop::default();
         if let Some(path) = &privdrop.chroot {
@@ -123,34 +123,39 @@ fn drop_privs(privdrop: &PrivDropConfig) {
 
 type SharedSet = Arc<DashSet<String>>;
 
-fn with_dash_set(set: SharedSet)
-    -> impl Filter<Extract = (SharedSet,), Error = Infallible> + Clone {
+fn with_dash_set(
+    set: SharedSet,
+) -> impl Filter<Extract = (SharedSet,), Error = Infallible> + Clone {
     warp::any().map(move || set.clone())
 }
 
-fn with_http_client(client: reqwest::Client)
-    -> impl Filter<Extract = (reqwest::Client,), Error = Infallible> + Clone {
+fn with_http_client(
+    client: reqwest::Client,
+) -> impl Filter<Extract = (reqwest::Client,), Error = Infallible> + Clone {
     warp::any().map(move || client.clone())
 }
 
-fn with_cert_storage(storage: Arc<mini_pki::CAStorage>)
-    -> impl Filter<Extract = (Arc<mini_pki::CAStorage>,), Error = Infallible> + Clone {
+fn with_cert_storage(
+    storage: Arc<mini_pki::CAStorage>,
+) -> impl Filter<Extract = (Arc<mini_pki::CAStorage>,), Error = Infallible> + Clone {
     warp::any().map(move || storage.clone())
 }
 
-fn with_redis_storage(storage: Arc<redis_storage::RedisStorage>)
-    -> impl Filter<Extract = (Arc<redis_storage::RedisStorage>,), Error = Infallible> + Clone {
+fn with_redis_storage(
+    storage: Arc<redis_storage::RedisStorage>,
+) -> impl Filter<Extract = (Arc<redis_storage::RedisStorage>,), Error = Infallible> + Clone {
     warp::any().map(move || storage.clone())
 }
 
 fn read_lines<P>(filename: P) -> io::Result<io::Lines<io::BufReader<File>>>
-    where P: AsRef<Path>, {
+where
+    P: AsRef<Path>,
+{
     let file = File::open(filename)?;
     Ok(io::BufReader::new(file).lines())
 }
 
-
-fn main()  -> Result<(), AppError> {
+fn main() -> Result<(), AppError> {
     let opts = Config::from_args();
     let has_sane_tls = opts.privkey.is_some() && opts.cert.is_some();
     let log_level = match opts.verbose {
@@ -169,8 +174,7 @@ fn main()  -> Result<(), AppError> {
         .filter(None, log_level)
         .format_timestamp(Some(env_logger::fmt::TimestampPrecision::Millis))
         .init();
-    let domains_inflight : SharedSet =
-        Arc::new(DashSet::with_capacity(128));
+    let domains_inflight: SharedSet = Arc::new(DashSet::with_capacity(128));
 
     // Create CA storage and add trusted fingerprints
     let ca_storage = Arc::new(mini_pki::CAStorage::new().unwrap());
@@ -229,24 +233,21 @@ fn main()  -> Result<(), AppError> {
             let server = warp::serve(routes);
 
             if has_sane_tls {
-                let privkey = fs::read(opts.privkey.unwrap())
-                    .expect("cannot read privkey file");
-                let cert = fs::read(opts.cert.unwrap())
-                    .expect("cannot read privkey file");
+                let privkey = fs::read(opts.privkey.unwrap()).expect("cannot read privkey file");
+                let cert = fs::read(opts.cert.unwrap()).expect("cannot read privkey file");
                 // Drop privs after keys are read
                 drop_privs(&opts.privdrop);
 
-                server.tls()
+                server
+                    .tls()
                     .cert(cert)
                     .key(privkey)
                     .run(opts.listen_addr)
                     .await;
             } else {
                 drop_privs(&opts.privdrop);
-                server.run(opts.listen_addr)
-                    .await;
+                server.run(opts.listen_addr).await;
             }
         });
     Ok(())
 }
-
