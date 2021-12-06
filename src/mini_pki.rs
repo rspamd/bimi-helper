@@ -8,7 +8,6 @@ use openssl::x509::{X509, X509StoreContext, X509StoreContextRef};
 use openssl::hash::MessageDigest;
 use openssl::error::ErrorStack;
 use openssl::stack::Stack;
-use hex;
 use foreign_types::{ForeignTypeRef};
 use log::{debug, info};
 use crate::x509_helpers::x509_is_ca;
@@ -81,7 +80,7 @@ impl CAStorage {
 
         let mut fp_count = self.trusted_fingerprints
             .get_mut(cert_digest_hex.as_str())
-            .ok_or(AppError::UntrustedCACert(cert_digest_hex.clone()))?;
+            .ok_or_else(|| AppError::UntrustedCACert(cert_digest_hex.clone()))?;
 
         if *fp_count {
             // Already added

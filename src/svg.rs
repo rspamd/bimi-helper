@@ -28,7 +28,7 @@ pub fn process_svg(input: &[u8]) -> Result<Vec<u8>, AppError>
 fn check_svg_size(input : &[u8]) -> Result<(), AppError>
 {
     let sz = input.len();
-    if (sz > MAX_SVG_SIZE) || sz < 8 {
+    if !(8..=MAX_SVG_SIZE).contains(&sz) {
         Err(AppError::SVGSizeError(sz))
     }
     else {
@@ -39,8 +39,7 @@ fn check_svg_size(input : &[u8]) -> Result<(), AppError>
 fn maybe_decompress_svg(input: &[u8]) -> Result<Vec<u8>, AppError>
 {
     let mut gz = GzDecoder::new(input);
-    let mut out = Vec::with_capacity(MAX_SVG_SIZE);
-    out.resize(MAX_SVG_SIZE, 0);
+    let mut out = vec![0; MAX_SVG_SIZE];
 
     let nbytes = gz.read(&mut out.as_mut_slice())?;
 

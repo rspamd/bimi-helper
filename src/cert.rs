@@ -31,7 +31,7 @@ pub struct BIMICertificate {
     key_usages: Vec<String>
 }
 
-const BIMI_KEY_USAGE_OID : &'static str = "1.3.6.1.5.5.7.3.31";
+const BIMI_KEY_USAGE_OID : &str = "1.3.6.1.5.5.7.3.31";
 
 impl BIMICertificate {
     /// Create a certificate from PEM file (typical usage for BIMI)
@@ -51,7 +51,7 @@ impl BIMICertificate {
             not_after.timestamp());
         let mut key_usages : Vec<String> = Vec::new();
         let extensions = get_x509_extended_key_usage( &certificate);
-        extensions.map(|exts| {
+        if let Some(exts) = extensions {
             for ext in exts {
                 debug!("got extended key usage extension: {}", ext);
                 match ext.text() {
@@ -59,7 +59,7 @@ impl BIMICertificate {
                     _ => debug!("cannot decode extension")
                 }
             }
-        });
+        }
         let mut chain_stack = openssl::stack::Stack::<X509>::new().unwrap();
         // Move all elements from a vector to the SSL stack
         while let Some(cert) = x509_stack.pop() {
@@ -93,7 +93,7 @@ impl BIMICertificate {
     pub fn verify_name(&self, domain: &str) -> Result<(), AppError> {
         match self.certificate.subject_alt_names() {
             Some(names) => verify_subject_alt_names(domain, &names),
-            None => verify_subject_name(domain, &self.certificate.subject_name()),
+            None => verify_subject_name(domain, self.certificate.subject_name()),
         }
     }
 
@@ -102,13 +102,13 @@ impl BIMICertificate {
         let now = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .expect("cannot run if clock are before unix epoch").as_secs() as i64;
-        return self.not_after.timestamp() > now && self.not_before.timestamp() <= now;
+        self.not_after.timestamp() > now && self.not_before.timestamp() <= now
     }
 
     /// Verifies that a cert has defined key usage for BIMI:
     /// 1.3.6.1.5.5.7.3.31
     pub fn verify_key_usage(&self) -> bool {
-        return self.key_usages.contains(&String::from(BIMI_KEY_USAGE_OID));
+        self.key_usages.iter().any(|x| x == BIMI_KEY_USAGE_OID)
     }
 
 }
@@ -228,8 +228,8 @@ lazy_static! {
 /// Performs a cheap check for PEM file
 fn check_pem(input: &[u8]) -> bool
 {
-    HEADER_SRCH.search_in(&input).and_then(|s| {
-        FOOTER_SRCH.search_in(&input)
+    HEADER_SRCH.search_in(input).and_then(|s| {
+        FOOTER_SRCH.search_in(input)
             .and_then(|e| {
                 if s + 1 >= e - 1 {
                     None
@@ -311,7 +311,7 @@ fn parse_logotype_ext(input: &[u8]) -> Result<&str, AppError> {
     let first_url = &urls.as_sequence()?[0]
         .as_sequence()?[0]
         .as_sequence()?[0];
-    first_url.as_str().map_err(|e| AppError::BERError(e))
+    first_url.as_str().map_err(AppError::BERError)
 }
 
 // Parses a sequence of logotype info asn.1 objects

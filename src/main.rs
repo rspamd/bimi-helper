@@ -9,7 +9,6 @@ use log::{info};
 
 use std::net::SocketAddr;
 use structopt::StructOpt;
-use reqwest;
 use warp::{Filter};
 use std::fs;
 use dashmap::DashSet;
@@ -182,10 +181,8 @@ fn main()  -> Result<(), AppError> {
     }
     if let Some(ref fname) = opts.fingerprints_file {
         if let Ok(lines) = read_lines(fname) {
-            for ln in lines {
-                if let Ok(fp) = ln {
-                    ca_storage.as_ref().add_fingerprint(fp.trim())?;
-                }
+            for ln in lines.flatten() {
+                ca_storage.as_ref().add_fingerprint(ln.trim())?;
             }
         }
     }

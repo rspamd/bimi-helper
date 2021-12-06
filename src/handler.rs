@@ -1,10 +1,7 @@
 use warp::{http::StatusCode, Reply, Rejection};
 use dashmap::DashSet;
 use url::Url;
-use reqwest;
 use std::sync::Arc;
-use serde_json;
-use base64;
 
 use crate::error::{AppError};
 use crate::data::*;
@@ -32,7 +29,7 @@ pub async fn check_handler(body: RequestSVG, inflight: Arc<DashSet<String>>,
                 info!("got result from {}: length = {}", &req.url, o.len());
                 let result = match cert::process_cert(o,
                                                       ca_storage.as_ref(),
-                                                      &domain) {
+                                                      domain) {
                     Err(e) => {
                         info!("cannot process cert for {}: {:?}", domain, e);
                         serde_json::to_string(&RetreiveError{
@@ -136,7 +133,7 @@ async fn handle_request<T, F>(body: RequestSVG,
             }
         });
         if is_sync {
-            match fut.await.map_err(|e| AppError::JoinError(e))? {
+            match fut.await.map_err(AppError::JoinError)? {
                 Ok(res) => Ok(Box::new(warp::reply::with_status(res, StatusCode::OK))),
                 Err(e) => Err(warp::reject::custom(e))
             }

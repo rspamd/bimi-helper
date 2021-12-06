@@ -89,16 +89,11 @@ pub fn x509_is_ca(cert: &X509) -> bool {
     unsafe {
         let flags = openssl_ffi::X509_get_extension_flags(
             cert.as_ref() as *const _ as *mut _,);
-        if flags & openssl_ffi::EXFLAG_CA != 0 {
-            true
-        }
-        else {
-            false
-        }
+        flags & openssl_ffi::EXFLAG_CA != 0
     }
 }
 
-const BIMI_IMAGE_OID : &'static str = "1.3.6.1.5.5.7.1.12";
+const BIMI_IMAGE_OID : &str = "1.3.6.1.5.5.7.1.12";
 
 /// Get BIMI extension by finding a logotype OID and do a (very) naive
 /// parsing of it's structure
