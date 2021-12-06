@@ -36,7 +36,7 @@ fn maybe_decompress_svg(input: &[u8]) -> Result<Vec<u8>, AppError> {
     let mut gz = GzDecoder::new(input);
     let mut out = vec![0; MAX_SVG_SIZE];
 
-    let nbytes = gz.read(&mut out.as_mut_slice())?;
+    let nbytes = gz.read(out.as_mut_slice())?;
 
     if nbytes == out.len() {
         // Too large SVG uncompressed

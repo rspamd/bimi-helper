@@ -361,7 +361,7 @@ fn parse_logotype_data(input: &[u8]) -> BerResult {
 fn parse_logotype_image_details(i: &[u8]) -> BerResult {
     let (i, _) = parse_der_ia5string(i)?; // Content-Type
     let (i, _) = parse_der_sequence_of(parse_logotype_hash_and_value)(i)?;
-    let (i, urls) = parse_der_sequence_of(|i| parse_der_ia5string(i))(i)?;
+    let (i, urls) = parse_der_sequence_of(parse_der_ia5string)(i)?;
     Ok((i, urls))
 }
 // HashAlgAndValue ::= SEQUENCE {
