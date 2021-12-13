@@ -57,6 +57,15 @@ fingerprints.
 For the example above, you might want to add DigiCert Verified Mark Root CA fingerprint
 to be able to validate pem from `valimail`. 
 
+## Use in Docker
+
+This app can be built and used via Docker.
+
+```commandline
+docker build -t bimi-agent .
+docker run -p 3030:3030 -d --rm --name bimi-agent bimi-agent
+```
+
 ## Valid VMC roots fingerprints
 
 So far, there are two valid VMC roots:
