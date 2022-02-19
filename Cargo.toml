@@ -14,7 +14,7 @@ license = "Apache-2.0"
 env_logger = "0.8"
 futures = "0.3"
 log = "0.4"
-structopt = "0.3"
+clap = { version = "3.1", features = ["derive"] }
 tokio = { version = "1.11", features = ["io-util", "macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
 tokio-stream = { version = "0.1.7", features = ["net", "time"] }
 async-stream = "0.3.0"

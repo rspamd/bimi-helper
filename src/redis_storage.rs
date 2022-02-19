@@ -2,19 +2,19 @@ extern crate redis;
 use self::redis::AsyncCommands;
 use crate::data::RequestSVG;
 use crate::error::AppError;
+use clap::Parser;
 use std::time::Duration;
-use structopt::StructOpt;
 use tokio::time::timeout;
 
-#[derive(Debug, StructOpt, Clone)]
+#[derive(Debug, Parser, Clone)]
 pub struct RedisStorageConfig {
     /// Redis operations timeout
-    #[structopt(long = "redis-timeout", default_value = "5.0")]
+    #[clap(long = "redis-timeout", default_value = "5.0")]
     timeout: f32,
-    #[structopt(long = "redis-expiry", default_value = "259200")]
+    #[clap(long = "redis-expiry", default_value = "259200")]
     expiry: f32,
     /// Prefix for Redis keys (if not specified in a request)
-    #[structopt(long = "redis-prefix")]
+    #[clap(long = "redis-prefix")]
     prefix: Option<String>,
 }
 

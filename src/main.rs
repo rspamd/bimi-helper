@@ -1,22 +1,24 @@
-#[macro_use]
-extern crate lazy_static;
-extern crate openssl_sys as openssl_ffi;
-#[macro_use]
-extern crate foreign_types;
-
 use log::info;
 use log::LevelFilter;
 
+extern crate openssl_sys as openssl_ffi;
+
+#[macro_use]
+extern crate foreign_types;
+#[macro_use]
+extern crate lazy_static;
+
+use clap::Parser;
 use dashmap::DashSet;
-use std::convert::Infallible;
-use std::fs;
-use std::fs::File;
-use std::io::{self, BufRead};
-use std::net::SocketAddr;
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use std::time::Duration;
-use structopt::StructOpt;
+use std::{
+    convert::Infallible,
+    fs::{self, File},
+    io::{self, BufRead},
+    net::SocketAddr,
+    path::{Path, PathBuf},
+    sync::Arc,
+    time::Duration,
+};
 use warp::Filter;
 
 mod cert;
@@ -34,61 +36,63 @@ use redis_storage::RedisStorage;
 #[cfg(all(unix, feature = "drop_privs"))]
 use privdrop::PrivDrop;
 
-#[derive(Debug, StructOpt)]
-#[structopt(
+#[derive(Debug, Parser, Clone)]
+#[clap(
     name = "bimi-agent",
-    about = "BIMI agent to assist images verification end extraction"
+    about = "BIMI agent to assist images verification end extraction",
+    author,
+    rename_all = "kebab-case"
 )]
 struct Config {
     /// Listen address to bind to
-    #[structopt(short = "l", long = "listen", default_value = "0.0.0.0:3030")]
+    #[clap(short = 'l', long = "listen", default_value = "0.0.0.0:3030")]
     listen_addr: SocketAddr,
     /// Verbose level (repeat for more verbosity)
-    #[structopt(short = "v", long = "verbose", parse(from_occurrences))]
+    #[clap(short = 'v', parse(from_occurrences))]
     verbose: u8,
-    #[structopt(flatten)]
+    #[clap(flatten)]
     #[cfg(all(unix, feature = "drop_privs"))]
     privdrop: PrivDropConfig,
-    #[structopt(long = "privkey", parse(from_os_str))]
+    #[clap(long = "privkey", parse(from_os_str))]
     /// Private key for SSL HTTP server
     privkey: Option<PathBuf>,
     /// X509 certificate for HTTP server
-    #[structopt(long = "cert", parse(from_os_str))]
-    #[structopt(parse(from_os_str))]
+    #[clap(long = "cert", parse(from_os_str))]
     cert: Option<PathBuf>,
     /// Number of threads to start
-    #[structopt(short = "n", long = "max-threads", default_value = "2")]
+    #[clap(short = 'n', default_value = "2")]
     max_threads: usize,
     /// HTTP client timeout
-    #[structopt(short = "t", long = "timeout", default_value = "5.0")]
+    #[clap(short = 't', long = "timeout", default_value = "5.0")]
     http_timeout: f32,
     /// HTTP user agent
-    #[structopt(short = "U", long = "user-agent", default_value = "BIMI-Agent/0.1")]
+    #[clap(short = 'U', long = "user-agent", default_value = "BIMI-Agent/0.1")]
     http_ua: String,
     /// Trusted fingerprint
-    #[structopt(short = "F", long = "fingerprint")]
+    #[clap(short = 'F', long = "fingerprint")]
     fingerprints: Option<Vec<String>>,
     /// Trusted fingerprints file
-    #[structopt(long = "fingerprints-file")]
+    #[clap(long)]
     fingerprints_file: Option<String>,
     /// Trusted SSL root in PEM format
-    #[structopt(long = "ssl-ca-file")]
+    #[clap(long)]
     ssl_ca_file: Option<Vec<String>>,
-    #[structopt(flatten)]
+    #[clap(flatten)]
     redis_conf: redis_storage::RedisStorageConfig,
 }
 
 #[cfg(all(unix, feature = "drop_privs"))]
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser, Clone, Default)]
+#[clap(rename_all = "kebab-case")]
 struct PrivDropConfig {
     /// Run as this user and their primary group
-    #[structopt(short = "u", long = "user")]
+    #[clap(short = 'u', long)]
     user: Option<String>,
     /// Run as this group
-    #[structopt(short = "g", long = "group")]
+    #[clap(short = 'g', long)]
     group: Option<String>,
     /// Chroot to this directory
-    #[structopt(long = "chroot")]
+    #[clap(long)]
     chroot: Option<String>,
 }
 
@@ -156,7 +160,7 @@ where
 }
 
 fn main() -> Result<(), AppError> {
-    let opts = Config::from_args();
+    let opts = Config::parse();
     let has_sane_tls = opts.privkey.is_some() && opts.cert.is_some();
     let log_level = match opts.verbose {
         0 => LevelFilter::Off,
