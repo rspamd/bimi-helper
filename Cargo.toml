@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2018"
 authors = ["Vsevolod Stakhov <vsevolod@highsecure.ru>"]
 description = "tarpit endpoint for HTTP requests"
-repository = "https://github.com/vstakhov/bimi-agent"
+repository = "https://github.com/rspamd/bimi-agent"
 readme = "README.md"
 license = "Apache-2.0"
 

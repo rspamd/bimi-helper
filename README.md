@@ -81,7 +81,7 @@ So far, there are two valid VMC roots:
 - [x] Implement storage for BIMI images in Redis
 - [x] Write tests
 - [x] Implement reading from a file with trusted fingerprints
-- [ ] Add systemd units and other helping stuff
+- [x] Add docker image
 - [x] Add integration to Rspamd
 - [x] Work with plain SVG images from `l=` anchor in BIMI records
 - [ ] Validate SVG images

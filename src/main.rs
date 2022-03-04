@@ -41,6 +41,7 @@ use privdrop::PrivDrop;
     name = "bimi-agent",
     about = "BIMI agent to assist images verification end extraction",
     author,
+    version,
     rename_all = "kebab-case"
 )]
 struct Config {
