@@ -1,0 +1,11 @@
+[Unit]
+Description=Bimi agent
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/bimi-agent --ssl-ca-file /usr/share/bimi-agent/bimi_ca.pem
+User=nobody
+Type=simple
+
+[Install]
+WantedBy=multi-user.target

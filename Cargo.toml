@@ -2,8 +2,8 @@
 name = "bimi-agent"
 version = "0.1.0"
 edition = "2018"
-authors = ["Vsevolod Stakhov <vsevolod@highsecure.ru>"]
-description = "tarpit endpoint for HTTP requests"
+authors = ["Vsevolod Stakhov <vsevolod@rspamd.com>"]
+description = "A REST service to fetch and validate BIMI enabled certificates"
 repository = "https://github.com/rspamd/bimi-agent"
 readme = "README.md"
 license = "Apache-2.0"
@@ -48,3 +48,30 @@ privdrop = { version = "0.5", optional = true }
 [features]
 default = ["drop_privs"]
 drop_privs = ["privdrop"]
+
+[package.metadata.deb]
+maintainer = "Vsevolod Stakhov <vsevolod@rspamd.com>"
+copyright = "2022, Vsevolod Stakhov <vsevolod@rspamd.com>"
+license-file = ["LICENSE.md", "0"]
+extended-description = """\
+A REST service to fetch and verify BIMI certificates
+."""
+depends = "$auto"
+section = "net"
+priority = "optional"
+assets = [
+    ["target/release/bimi-agent", "usr/bin/", "755"],
+    ["data/bimi_ca.pem", "usr/share/bimi-agent", "644"],
+    ["README.md", "usr/share/doc/bimi-agent/README", "644"],
+]
+maintainer-scripts = "debian/"
+systemd-units = { enable = false }
+
+[package.metadata.generate-rpm]
+name = "bimi-agent"
+license = "ASL 2.0"
+assets = [
+    { source = "target/release//bimi-agent", dest = "/usr/bin/bimi-agent", mode = "755" },
+    { source = "debian/service", dest = "/lib/systemd/system/bimi-helper.service", mode = "644" },
+    { source = "data/bimi_ca.pem", dest = "/usr/share/bimi-agent", mode = "644"},
+]
