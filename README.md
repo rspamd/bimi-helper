@@ -44,7 +44,7 @@ This will open an HTTP server available for requests.
 For example, store an image in Redis:
 
 ```commandline
- curl -X POST 'http://localhost:3030/check/' \
+ curl -X POST 'http://localhost:3030/v1/check/' \
   -H 'Content-Type: application/json' \
   -d '{"url": "https://amplify.valimail.com/bimi/valimail/dcvSV-hEXmW-valimail_inc_164268123.pem", "redis_server": "redis://127.0.0.1", "domain": "valimail.com"}'
 ```
