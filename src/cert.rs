@@ -48,17 +48,12 @@ impl BIMICertificate {
             not_before.timestamp(),
             not_after.timestamp()
         );
-        let mut key_usages: Vec<String> = Vec::new();
-        let extensions = get_x509_extended_key_usage(&certificate);
-        if let Some(exts) = extensions {
-            for ext in exts {
-                debug!("got extended key usage extension: {}", ext);
-                match ext.text() {
-                    Some(s) => key_usages.push(s),
-                    _ => debug!("cannot decode extension"),
-                }
-            }
-        }
+        let key_usages = get_x509_extended_key_usage(&certificate).map(|exts| {
+            exts.iter()
+                .filter_map(|ext| ext.text())
+                .collect::<Vec<_>>()
+        });
+
         let mut chain_stack = openssl::stack::Stack::<X509>::new().unwrap();
         // Move all elements from a vector to the SSL stack
         while let Some(cert) = x509_stack.pop() {
@@ -78,7 +73,7 @@ impl BIMICertificate {
             chain: chain_stack,
             not_before,
             not_after,
-            key_usages,
+            key_usages: key_usages.unwrap_or(vec![]),
         };
 
         Ok(identity)
@@ -316,11 +311,12 @@ pub fn process_cert(
 fn parse_logotype_ext(input: &[u8]) -> Result<&str, AppError> {
     let (_, urls) = parse_der_sequence_defined_g(|i: &[u8], _| {
         let (rest, hdr) = verify(der_read_element_header, |hdr| hdr.is_contextspecific())(i)?;
-        match hdr.tag.0 {
+        let tag = hdr.tag().0;
+        match tag {
             2 => parse_logotype_info_seq(rest),
             _ => {
-                info!("unexpected tag: {}", hdr.tag.0);
-                Err(nom::Err::Error(BerError::UnknownTag))
+                info!("unexpected tag: {}", tag);
+                Err(nom::Err::Error(BerError::UnknownTag(tag)))
             }
         }
     })(input)?;
@@ -335,11 +331,11 @@ fn parse_logotype_ext(input: &[u8]) -> Result<&str, AppError> {
 // indirect        [1] LogotypeReference }
 fn parse_logotype_info_seq(input: &[u8]) -> BerResult {
     let (rest, hdr) = verify(der_read_element_header, |hdr| hdr.is_contextspecific())(input)?;
-    match hdr.tag.0 {
+    match hdr.tag().0 {
         0 => parse_der_sequence_of(parse_logotype_data)(rest),
         _ => {
-            info!("cannot match tag: {}", hdr.tag.0);
-            Err(nom::Err::Error(BerError::UnknownTag))
+            info!("cannot match tag: {}", hdr.tag().0);
+            Err(nom::Err::Error(BerError::UnknownTag(hdr.tag().0)))
         }
     }
 }
