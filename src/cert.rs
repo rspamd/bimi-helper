@@ -70,7 +70,7 @@ impl BIMICertificate {
             chain: chain_stack,
             not_before,
             not_after,
-            key_usages: key_usages.unwrap_or(vec![]),
+            key_usages: key_usages.unwrap_or_default(),
         };
 
         Ok(identity)

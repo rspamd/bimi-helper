@@ -153,7 +153,7 @@ pub fn x509_bimi_get_ext(cert: &X509) -> Option<Vec<u8>> {
         }
 
         let len = openssl_ffi::ASN1_STRING_length(obj_data as *mut _);
-        let slice = slice::from_raw_parts(ptr as *const u8, len as usize);
+        let slice = slice::from_raw_parts(ptr, len as usize);
 
         Some(slice.to_vec())
     }
