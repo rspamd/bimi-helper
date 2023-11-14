@@ -1,8 +1,7 @@
 use chrono::{DateTime, NaiveDateTime, Utc};
-use foreign_types::ForeignType;
+use foreign_types::{foreign_type, ForeignType};
 use libc::c_int;
 use openssl::asn1::Asn1TimeRef;
-use openssl::stack::{Stack, Stackable};
 use openssl::x509::X509;
 use std::ffi::CString;
 use std::fmt;
@@ -15,17 +14,15 @@ use crate::error::AppError;
 pub fn parse_openssl_time(time: &Asn1TimeRef) -> Result<DateTime<Utc>, AppError> {
     let time = time.to_string();
     let time = NaiveDateTime::parse_from_str(&time, "%b %e %H:%M:%S %Y GMT")?;
-    Ok(DateTime::<Utc>::from_utc(time, Utc))
+    Ok(DateTime::<Utc>::from_naive_utc_and_offset(time, Utc))
 }
 
 foreign_type! {
-    type CType = openssl_ffi::ASN1_OBJECT;
-    fn drop = openssl_ffi::ASN1_OBJECT_free;
-
-    pub struct ExtendedKeyUsage;
-    pub struct ExtendedKeyUsageRef;
+    pub unsafe type ExtendedKeyUsage : Sync + Send {
+        type CType = openssl_ffi::ASN1_OBJECT;
+        fn drop = openssl_ffi::ASN1_OBJECT_free;
+    }
 }
-
 impl ExtendedKeyUsage {
     pub fn text(&self) -> Option<String> {
         unsafe {
@@ -34,7 +31,7 @@ impl ExtendedKeyUsage {
                 buf.as_mut_ptr() as *mut _,
                 buf.len() as c_int,
                 self.as_ptr(),
-                0,
+                1,
             );
             match std::str::from_utf8(&buf[..len as usize]) {
                 Err(_) => None,
@@ -52,7 +49,7 @@ impl fmt::Display for ExtendedKeyUsage {
                 buf.as_mut_ptr() as *mut _,
                 buf.len() as c_int,
                 self.as_ptr(),
-                0,
+                1,
             );
             match std::str::from_utf8(&buf[..len as usize]) {
                 Err(_) => fmt.write_str("error"),
@@ -62,12 +59,8 @@ impl fmt::Display for ExtendedKeyUsage {
     }
 }
 
-impl Stackable for ExtendedKeyUsage {
-    type StackType = openssl_ffi::stack_st_ASN1_OBJECT;
-}
-
 /// Returns a list of extended key usage extensions
-pub fn get_x509_extended_key_usage(cert: &X509) -> Option<Stack<ExtendedKeyUsage>> {
+pub fn get_x509_extended_key_usage(cert: &X509) -> Option<Vec<ExtendedKeyUsage>> {
     // This function is not provided by rust-openssl, have to use ffi
     unsafe {
         let stack = openssl_ffi::X509_get_ext_d2i(
@@ -79,7 +72,16 @@ pub fn get_x509_extended_key_usage(cert: &X509) -> Option<Stack<ExtendedKeyUsage
         if stack.is_null() {
             None
         } else {
-            Some(Stack::from_ptr(stack as *mut _))
+            let num_ext = openssl_ffi::OPENSSL_sk_num(stack as *const _) as usize;
+            let mut res = Vec::with_capacity(num_ext);
+            for i in 0..num_ext {
+                let obj = openssl_ffi::OPENSSL_sk_value(stack as *const _, i as c_int);
+                if obj.is_null() {
+                    break;
+                }
+                res.push(ExtendedKeyUsage::from_ptr(obj as *mut _));
+            }
+            Some(res)
         }
     }
 }
@@ -151,7 +153,7 @@ pub fn x509_bimi_get_ext(cert: &X509) -> Option<Vec<u8>> {
         }
 
         let len = openssl_ffi::ASN1_STRING_length(obj_data as *mut _);
-        let slice = slice::from_raw_parts(ptr as *const u8, len as usize);
+        let slice = slice::from_raw_parts(ptr, len as usize);
 
         Some(slice.to_vec())
     }

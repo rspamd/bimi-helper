@@ -7,6 +7,7 @@ use crate::data::*;
 use crate::error::AppError;
 use crate::svg;
 use crate::{cert, mini_pki, redis_storage};
+use base64::{engine::general_purpose as b64engine, Engine as _};
 use log::{info, warn};
 
 pub async fn health_handler(inflight: Arc<DashSet<String>>) -> Result<impl Reply, Rejection> {
@@ -38,7 +39,7 @@ pub async fn check_handler(
                     Ok(svg_bytes) => {
                         info!("processed certificate for {}", domain);
                         let svg = svg::process_svg(&svg_bytes[..])?;
-                        let encoded = base64::encode(&svg[..]);
+                        let encoded = b64engine::STANDARD.encode(&svg[..]);
                         serde_json::to_string(&SvgResult {
                             content: encoded.as_str(),
                         })
@@ -64,7 +65,7 @@ pub async fn svg_handler(
             handle_request(body, inflight, client, url, redis_storage, move |o, req| {
                 info!("got SVG result from {}: length = {}", &req.url, o.len());
                 let svg = svg::process_svg(o)?;
-                let encoded = base64::encode(svg);
+                let encoded = b64engine::STANDARD.encode(svg);
                 Ok(serde_json::to_string(&SvgResult {
                     content: encoded.as_str(),
                 })
@@ -113,7 +114,7 @@ where
             match resp.await {
                 Ok(o) => {
                     inflight.remove(&body.url);
-                    let res = check_f(&o.to_vec(), &body)?;
+                    let res = check_f(&o, &body)?;
 
                     if !body.skip_redis.unwrap_or(false) {
                         redis_storage

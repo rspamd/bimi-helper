@@ -1,14 +1,12 @@
 use log::info;
 use log::LevelFilter;
 
-extern crate openssl_sys as openssl_ffi;
-
-#[macro_use]
 extern crate foreign_types;
+extern crate openssl_sys as openssl_ffi;
 #[macro_use]
 extern crate lazy_static;
 
-use clap::Parser;
+use clap::{ArgAction, Parser};
 use dashmap::DashSet;
 use std::{
     convert::Infallible,
@@ -49,16 +47,16 @@ struct Config {
     #[clap(short = 'l', long = "listen", default_value = "0.0.0.0:3030")]
     listen_addr: SocketAddr,
     /// Verbose level (repeat for more verbosity)
-    #[clap(short = 'v', parse(from_occurrences))]
+    #[clap(short = 'v', action = ArgAction::Count)]
     verbose: u8,
     #[clap(flatten)]
     #[cfg(all(unix, feature = "drop_privs"))]
     privdrop: PrivDropConfig,
-    #[clap(long = "privkey", parse(from_os_str))]
+    #[clap(long = "privkey", value_parser)]
     /// Private key for SSL HTTP server
     privkey: Option<PathBuf>,
     /// X509 certificate for HTTP server
-    #[clap(long = "cert", parse(from_os_str))]
+    #[clap(long = "cert", value_parser)]
     cert: Option<PathBuf>,
     /// Number of threads to start
     #[clap(short = 'n', default_value = "2")]

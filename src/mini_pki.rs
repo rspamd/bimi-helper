@@ -1,7 +1,6 @@
 use crate::error::AppError;
 use crate::x509_helpers::x509_is_ca;
 use dashmap::DashMap;
-use foreign_types::ForeignTypeRef;
 use log::{debug, info};
 use openssl::error::ErrorStack;
 use openssl::hash::MessageDigest;
@@ -105,7 +104,7 @@ impl CAStorage {
         let ca_store = self.store.read().unwrap();
         let mut verify_error = String::new();
         let verify_result = nstore_ctx
-            .init(&*ca_store.as_ref(), cert.as_ref(), chain.as_ref(), |ctx| {
+            .init(ca_store.as_ref(), cert.as_ref(), chain.as_ref(), |ctx| {
                 let res = X509StoreContextRef::verify_cert(ctx)?;
                 if !res {
                     verify_error.push_str(ctx.error().error_string());
@@ -136,7 +135,10 @@ fn cert_hex_digest(cert: &X509) -> Result<String, AppError> {
 // Not exported by rust-openssl aside of Builder stuff
 fn add_cert_to_store(store: &mut X509Store, cert: &X509) -> Result<(), AppError> {
     unsafe {
-        match openssl_ffi::X509_STORE_add_cert(store.as_ref().as_ptr(), cert.as_ref().as_ptr()) {
+        match openssl_ffi::X509_STORE_add_cert(
+            store.as_ref() as *const _ as *mut _,
+            cert.as_ref() as *const _ as *mut _,
+        ) {
             1 => Ok(()),
             _ => Err(AppError::OpenSSLError(ErrorStack::get())),
         }
