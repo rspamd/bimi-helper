@@ -5,7 +5,7 @@ name: default
 
 steps:
 - name: test
-  image: rust:1.57
+  image: rust:1.73
   environment:
     RUST_BACKTRACE: 1
   commands:
@@ -21,6 +21,6 @@ trigger:
       - push
       - pull_request
 ---
-hmac: "bf5c965335e82f7f07983546e56d95f35c2a9c34980f62cb11cf9389b4736c0b"
+hmac: "e85eaaac20e102948fc4d846074fdaaa2fcc8c70e824cefb7eda0d4396fe1e8b"
 kind: signature
 ...
