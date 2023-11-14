@@ -1,17 +1,16 @@
 # BIMI-agent
 
+[![Build Status](https://ci.rspamd.com/api/badges/rspamd/bimi-helper/status.svg)](https://ci.rspamd.com/rspamd/bimi-helper)
+
 This service is intended to assist in extraction of the [BIMI VMC](https://bimigroup.org/verified-mark-certificates-vmc-and-bimi/)
 certificates, validate them using various rules and  a set of trusted 
 fingerprints or system CA roots, extract image (from LOGOTYPE X.509 extension) and
 store that image in Redis.
 
-So far, this project is highly experimental (as BIMI overall) and it **should not**
-be used in the production environment.
-
 ## Usage
 
 ```commandline
-bimi-agent 0.1.0
+bimi-agent 0.2.0
 BIMI agent to assist images verification end extraction
 
 USAGE:
@@ -71,19 +70,3 @@ docker run -p 3030:3030 -d --rm --name bimi-agent bimi-agent
 So far, there are two valid VMC roots:
 * Digicert VMC CA: `504386c9ee8932fecc95fade427f69c3e2534b7310489e300fee448e33c46b42`
 * Entrust VMC (is not included in chains...)
-
-## TODO list
-
-- [x] Implement the basic prototype
-- [x] Add x509 extraction and checks
-- [x] Add oids specific for BIMI Extended Key Usage
-- [x] Implement ASN.1 parser for the LOGOTYPE extension
-- [x] Implement storage for BIMI images in Redis
-- [x] Write tests
-- [x] Implement reading from a file with trusted fingerprints
-- [x] Add docker image
-- [x] Add integration to Rspamd
-- [x] Work with plain SVG images from `l=` anchor in BIMI records
-- [ ] Validate SVG images
-- [ ] Work with remote images (e.g. with no `data:` URLs)
-- [ ] Refactor ugly code
