@@ -48,11 +48,8 @@ impl BIMICertificate {
             not_before.timestamp(),
             not_after.timestamp()
         );
-        let key_usages = get_x509_extended_key_usage(&certificate).map(|exts| {
-            exts.iter()
-                .filter_map(|ext| ext.text())
-                .collect::<Vec<_>>()
-        });
+        let key_usages = get_x509_extended_key_usage(&certificate)
+            .map(|exts| exts.iter().filter_map(|ext| ext.text()).collect::<Vec<_>>());
 
         let mut chain_stack = openssl::stack::Stack::<X509>::new().unwrap();
         // Move all elements from a vector to the SSL stack

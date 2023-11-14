@@ -59,7 +59,6 @@ impl fmt::Display for ExtendedKeyUsage {
     }
 }
 
-
 /// Returns a list of extended key usage extensions
 pub fn get_x509_extended_key_usage(cert: &X509) -> Option<Vec<ExtendedKeyUsage>> {
     // This function is not provided by rust-openssl, have to use ffi

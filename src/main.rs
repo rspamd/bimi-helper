@@ -1,12 +1,12 @@
 use log::info;
 use log::LevelFilter;
 
-extern crate openssl_sys as openssl_ffi;
 extern crate foreign_types;
+extern crate openssl_sys as openssl_ffi;
 #[macro_use]
 extern crate lazy_static;
 
-use clap::{Parser, ArgAction};
+use clap::{ArgAction, Parser};
 use dashmap::DashSet;
 use std::{
     convert::Infallible,

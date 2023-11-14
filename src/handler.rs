@@ -7,8 +7,8 @@ use crate::data::*;
 use crate::error::AppError;
 use crate::svg;
 use crate::{cert, mini_pki, redis_storage};
-use log::{info, warn};
 use base64::{engine::general_purpose as b64engine, Engine as _};
+use log::{info, warn};
 
 pub async fn health_handler(inflight: Arc<DashSet<String>>) -> Result<impl Reply, Rejection> {
     Ok(warp::reply::json(&HealthReply {
