@@ -31,7 +31,7 @@ impl ExtendedKeyUsage {
                 buf.as_mut_ptr() as *mut _,
                 buf.len() as c_int,
                 self.as_ptr(),
-                0,
+                1,
             );
             match std::str::from_utf8(&buf[..len as usize]) {
                 Err(_) => None,
@@ -49,7 +49,7 @@ impl fmt::Display for ExtendedKeyUsage {
                 buf.as_mut_ptr() as *mut _,
                 buf.len() as c_int,
                 self.as_ptr(),
-                0,
+                1,
             );
             match std::str::from_utf8(&buf[..len as usize]) {
                 Err(_) => fmt.write_str("error"),
