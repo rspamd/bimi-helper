@@ -135,7 +135,7 @@ fn cert_hex_digest(cert: &X509) -> Result<String, AppError> {
 // Not exported by rust-openssl aside of Builder stuff
 fn add_cert_to_store(store: &mut X509Store, cert: &X509) -> Result<(), AppError> {
     unsafe {
-        match openssl_ffi::X509_STORE_add_cert(store as *const _ as *mut _, cert as *const _ as *mut _) {
+        match openssl_ffi::X509_STORE_add_cert(store.as_ref() as *const _ as *mut _, cert.as_ref() as *const _ as *mut _) {
             1 => Ok(()),
             _ => Err(AppError::OpenSSLError(ErrorStack::get())),
         }
