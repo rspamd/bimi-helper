@@ -104,7 +104,7 @@ impl CAStorage {
         let ca_store = self.store.read().unwrap();
         let mut verify_error = String::new();
         let verify_result = nstore_ctx
-            .init(&*ca_store.as_ref(), cert.as_ref(), chain.as_ref(), |ctx| {
+            .init(ca_store.as_ref(), cert.as_ref(), chain.as_ref(), |ctx| {
                 let res = X509StoreContextRef::verify_cert(ctx)?;
                 if !res {
                     verify_error.push_str(ctx.error().error_string());

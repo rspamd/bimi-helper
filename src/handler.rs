@@ -114,7 +114,7 @@ where
             match resp.await {
                 Ok(o) => {
                     inflight.remove(&body.url);
-                    let res = check_f(&o.to_vec(), &body)?;
+                    let res = check_f(&o, &body)?;
 
                     if !body.skip_redis.unwrap_or(false) {
                         redis_storage
