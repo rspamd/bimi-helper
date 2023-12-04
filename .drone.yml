@@ -1,26 +1,208 @@
 ---
-kind: pipeline
-type: docker
-name: default
-
-steps:
-- name: test
-  image: rust:1.73
-  environment:
-    RUST_BACKTRACE: 1
-  commands:
-  - rustup component add clippy rustfmt
-  - cargo fmt --all -- --check
-  - cargo clippy -- -D warnings
-  - cargo test
-  - RUST_TEST_THREADS=1 cargo test
-
-trigger:
-  event:
-    include:
-      - push
-      - pull_request
+{
+   "kind": "pipeline",
+   "name": "test-amd64",
+   "platform": {
+      "arch": "amd64",
+      "os": "linux"
+   },
+   "steps": [
+      {
+         "commands": [
+            "rustup component add clippy rustfmt",
+            "cargo fmt --all -- --check",
+            "cargo clippy -- -D warnings",
+            "cargo test",
+            "RUST_TEST_THREADS=1 cargo test"
+         ],
+         "environment": {
+            "RUST_BACKTRACE": 1
+         },
+         "image": "rust:1.73",
+         "name": "test"
+      }
+   ],
+   "trigger": {
+      "event": {
+         "include": [
+            "push",
+            "pull_request"
+         ]
+      }
+   },
+   "type": "docker"
+}
 ---
-hmac: "e85eaaac20e102948fc4d846074fdaaa2fcc8c70e824cefb7eda0d4396fe1e8b"
-kind: signature
+{
+   "kind": "pipeline",
+   "name": "test-arm64",
+   "platform": {
+      "arch": "arm64",
+      "os": "linux"
+   },
+   "steps": [
+      {
+         "commands": [
+            "rustup component add clippy rustfmt",
+            "cargo fmt --all -- --check",
+            "cargo clippy -- -D warnings",
+            "cargo test",
+            "RUST_TEST_THREADS=1 cargo test"
+         ],
+         "environment": {
+            "RUST_BACKTRACE": 1
+         },
+         "image": "rust:1.73",
+         "name": "test"
+      }
+   ],
+   "trigger": {
+      "event": {
+         "include": [
+            "push",
+            "pull_request"
+         ]
+      }
+   },
+   "type": "docker"
+}
+---
+{
+   "kind": "pipeline",
+   "name": "docker-amd64",
+   "platform": {
+      "arch": "amd64",
+      "os": "linux"
+   },
+   "steps": [
+      {
+         "image": "plugins/docker",
+         "name": "docker-build",
+         "settings": {
+            "dockerfile": "Dockerfile",
+            "label_schema": [
+               "docker.dockerfile=Dockerfile"
+            ],
+            "password": {
+               "from_secret": "docker_password"
+            },
+            "repo": "rspamd/bimi-helper",
+            "tags": [
+               "latest-amd64"
+            ],
+            "username": {
+               "from_secret": "docker_username"
+            }
+         }
+      }
+   ],
+   "trigger": {
+      "branch": {
+         "include": [
+            "main"
+         ]
+      },
+      "event": {
+         "include": [
+            "tag"
+         ]
+      }
+   },
+   "type": "docker"
+}
+---
+{
+   "kind": "pipeline",
+   "name": "docker-arm64",
+   "platform": {
+      "arch": "arm64",
+      "os": "linux"
+   },
+   "steps": [
+      {
+         "image": "plugins/docker",
+         "name": "docker-build",
+         "settings": {
+            "dockerfile": "Dockerfile",
+            "label_schema": [
+               "docker.dockerfile=Dockerfile"
+            ],
+            "password": {
+               "from_secret": "docker_password"
+            },
+            "repo": "rspamd/bimi-helper",
+            "tags": [
+               "latest-arm64"
+            ],
+            "username": {
+               "from_secret": "docker_username"
+            }
+         }
+      }
+   ],
+   "trigger": {
+      "branch": {
+         "include": [
+            "main"
+         ]
+      },
+      "event": {
+         "include": [
+            "tag"
+         ]
+      }
+   },
+   "type": "docker"
+}
+---
+{
+   "depends_on": [
+      "docker-amd64",
+      "docker-arm64"
+   ],
+   "kind": "pipeline",
+   "name": "multiarch_docker_image",
+   "steps": [
+      {
+         "image": "plugins/manifest",
+         "name": "multiarch_image",
+         "settings": {
+            "password": {
+               "from_secret": "docker_password"
+            },
+            "platforms": [
+               "linux/amd64",
+               "linux/arm64"
+            ],
+            "tags": [
+               "${DRONE_SEMVER_SHORT}",
+               "${DRONE_SEMVER_SHORT}-${DRONE_SEMVER_BUILD}"
+            ],
+            "target": "rspamd/bimi-helper:latest",
+            "template": "rspamd/bimi-helper:latest-ARCH",
+            "username": {
+               "from_secret": "docker_username"
+            }
+         }
+      }
+   ],
+   "trigger": {
+      "branch": {
+         "include": [
+            "main"
+         ]
+      },
+      "event": {
+         "include": [
+            "tag"
+         ]
+      }
+   },
+   "type": "docker"
+}
+---
+{
+   "hmac": "68a0bf4a8b932eff96f9fd98c8a5f1ac0fb929ade9ba9caf0600eb6634024fdd",
+   "kind": "signature"
+}
 ...
