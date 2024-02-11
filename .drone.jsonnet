@@ -41,7 +41,7 @@ local run_tests(arch) = {
   steps: [
     {
       name: 'test',
-      image: 'rust:1.73',
+      image: 'rust:1.74',
       environment: {
         RUST_BACKTRACE: 1,
       },

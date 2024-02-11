@@ -18,7 +18,7 @@
          "environment": {
             "RUST_BACKTRACE": 1
          },
-         "image": "rust:1.73",
+         "image": "rust:1.74",
          "name": "test"
       }
    ],
@@ -52,7 +52,7 @@
          "environment": {
             "RUST_BACKTRACE": 1
          },
-         "image": "rust:1.73",
+         "image": "rust:1.74",
          "name": "test"
       }
    ],
@@ -201,8 +201,7 @@
    "type": "docker"
 }
 ---
-{
-   "hmac": "68a0bf4a8b932eff96f9fd98c8a5f1ac0fb929ade9ba9caf0600eb6634024fdd",
-   "kind": "signature"
-}
+kind: signature
+hmac: 5f5db3b7573e65612bd2f99c9a2d877945dc3e09dffdb79705fd4267e6f922be
+
 ...
