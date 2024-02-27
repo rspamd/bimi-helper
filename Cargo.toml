@@ -39,7 +39,7 @@ libc = "0.2"
 hex = "0.4"
 data-url = "0.3"
 flate2 = "1.0"
-der-parser = "8.2"
+der-parser = "9.0"
 nom = "7.1"
 
 [target."cfg(unix)".dependencies]
