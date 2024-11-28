@@ -29,7 +29,7 @@ reqwest = { version = "0.12", features = ["json"] }
 url = "2.5"
 memmem = "0.1"
 base64 = "0.22"
-bytes = "1.7"
+bytes = "1.9"
 lazy_static = "1.5"
 openssl = "0.10"
 chrono = "0.4"
