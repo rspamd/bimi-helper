@@ -67,6 +67,10 @@ docker run -p 3030:3030 -d --rm --name bimi-agent bimi-agent
 
 ## Valid VMC roots fingerprints
 
-So far, there are two valid VMC roots:
+So far, there are five valid VMC roots:
+
 * Digicert VMC CA: `504386c9ee8932fecc95fade427f69c3e2534b7310489e300fee448e33c46b42`
-* Entrust VMC (is not included in chains...)
+* Entrust Verified Mark Root Certification Authority - VMCR1: `7831d95a47d42508cd5c9e6264f9096bac19f04eb9b7c8bdd35fffc71c189617`
+* SSL.com VMC RSA Root CA 2024: `8f9d1b7698886782a599b48510651c66a1aa0c5ca3192097bdc68534154bd30d`
+* SSL.com VMC ECC Root CA 2024: `1b82e7f4910b51e3e802a493acdc17ff58eac8b9eb7c09b52ac6cd2efb83598c`
+* GlobalSign Verified Mark Root R42: `cd122cb877c6928b9017b0f0b80dbd508196300bbd03cd7356c3beef524e7e0b`
